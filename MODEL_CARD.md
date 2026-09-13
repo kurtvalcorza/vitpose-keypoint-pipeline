@@ -1,0 +1,153 @@
+---
+license: apache-2.0
+model_card_spec: "1.1"
+pipeline_tag: keypoint-detection
+base_model: usyd-community/vitpose-base
+date_published: "2025-01-08"
+date_published_source: "Hugging Face Hub repository creation date of the exact hosted checkpoint (`createdAt` 2025-01-08T12:28:47Z, https://huggingface.co/api/models/usyd-community/vitpose-base — the Transformers-native conversion by the ViTAE group); the ViTPose paper is arXiv:2204.12484 (2022-04) and the pinned revision is the Hub's `main` as of 2026-09-14; the person-detector stage pins PekingU/rtdetr_r50vd (Hub `createdAt` 2024-05-29)"
+---
+
+# ViTPose-base + RT-DETR person detector (DIMER package v0.1.0) — Two-Stage Human Pose Estimation (Inference)
+
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-usyd--community%2Fvitpose--base-ffcc4d?style=flat)](https://huggingface.co/usyd-community/vitpose-base)
+[![Upstream GitHub](https://img.shields.io/badge/Upstream%20GitHub-ViTAE--Transformer%2FViTPose-181717?style=flat&logo=github&logoColor=white)](https://github.com/ViTAE-Transformer/ViTPose)
+[![arXiv Paper](https://img.shields.io/badge/arXiv-2204.12484-b31b1b.svg)](https://arxiv.org/abs/2204.12484)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+
+> [!WARNING]
+> ⚠️ **Provided for research, training, and evaluation purposes only.** Model weights are redistributed unmodified under their upstream license, which controls your use, including any commercial use or redistribution; the accompanying code and notebooks are released under this repository's license. All of it is supplied **"as is"**, without warranty of any kind, and has not been validated for production, clinical, or safety-critical use. Running the notebooks downloads third-party weights and datasets governed by their own licenses and consumes compute on your own Colab/Kaggle account. To the maximum extent permitted by law, the maintainers of this repository and the DIMER platform accept no liability for any damages arising from their use. Hosting implies no affiliation with or endorsement by the original authors.
+
+---
+
+## Interactive Colab Tutorials
+
+This pipeline provides a ready-to-run interactive Google Colab notebook that exercises the repository's public API end to end — stage and verify both pinned upstream revisions in a fresh runtime, validate an input, run both stages, and inspect and export the outputs:
+
+- **Task Inference Tutorial**:  
+  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/tutorials/vitpose_keypoint_colab.ipynb) [`vitpose_keypoint_colab.ipynb`](https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/tutorials/vitpose_keypoint_colab.ipynb)  
+  *Keypoints of a cartoon person drawn in code with the pinned `usyd-community/vitpose-base` weights after a stage-1 pass of the pinned `PekingU/rtdetr_r50vd` detector: 17 COCO joints with heatmap scores under two caller-owned thresholds, and `keypoint_pck` against the drawn joints as sanity evidence only — no OKS-AP.*
+
+---
+
+#### Description
+
+`usyd-community/vitpose-base` is the Transformers-native release of ViTPose-B — "ViTPose: Simple Vision Transformer Baselines for Human Pose Estimation" (Xu et al., arXiv:2204.12484; the ViTAE group at the University of Sydney) — published by the authors' community organisation and pinned here to revision `95be2991424e646950d656bb7fc15ec9be119700` (the Hub's `main` on 2026-09-14). The snapshot `config.json` declares `VitPoseForPoseEstimation`: a plain ViT-B backbone (`vitpose_backbone`, features from stage 12, 86M parameters; `use_pretrained_backbone` and `use_timm_backbone` false) with a classic (non-simple) heatmap decoder at scale factor 4 over 17 COCO keypoints (`id2label`: nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles) and the 19-edge COCO skeleton (`edges`); the float32 `model.safetensors` is 360 MB. ViTPose is **top-down**: it expects one person crop at a time, so the pipeline pairs it with a second pinned snapshot, the RT-DETR R50-VD detector `PekingU/rtdetr_r50vd` @ `df939e661d8c52e80608d1ec566561aabd25a4e7` (the sibling `rtdetr-detection-pipeline`'s checkpoint; only its `person` class is used), as stage 1. At inference stage 1 resizes the image to 640×640 and keeps `person` boxes whose sigmoid score reaches a threshold; stage 2 (`VitPoseImageProcessor`, `preprocessor_config.json`) affine-warps each box to a 192×256 crop with ImageNet mean/std, the model predicts 17 heatmaps, and `post_process_pose_estimation` maps each heatmap maximum back to input pixels with the maximum as the joint's score. Nothing is trained or adapted here. What this repository adds is packaging: `verify_snapshot`/`verify_detector_snapshot` and `stage_missing_files`/`stage_missing_detector_files` (manifest digest checking and fresh-clone staging for both snapshots), `VitPoseKeypointPipeline.from_pretrained` (verified local loading of both models with `trust_remote_code=False`, refusing a snapshot whose keypoint names differ from `KEYPOINT_NAMES`), `detect_people` (stage 1 alone), `estimate` (both stages, or stage 2 on caller boxes; input validation, threshold checks, all 17 joints reported with the kept subset), `keypoint_pck`, and the `validate_inputs` and `evaluation_report` stage helpers.
+
+#### Intended Use and Limitations
+
+The uses below are the ones the package was built to support; everything else is either out of scope (§Out-of-scope use cases) or prohibited (§Use cases).
+
+###### Primary Intended Uses
+
+The task is 2-D human keypoint detection: input one image (`PIL.Image.Image`, any mode, converted to RGB), optionally the person boxes as pixel xyxy, and two thresholds; output, per person, the box, its source, the detector's score when stage 1 ran, all 17 joints with pixel coordinates and heatmap scores, and the subset at or above the keypoint threshold. Envisioned applications are pose-based analysis of photographs and video frames — activity and exercise analysis, ergonomics and sports coaching prototypes, animation and motion-capture reference, gesture and posture cues for downstream models — as a research or internal-tooling component, with a human reviewing the skeletons before any conclusion is drawn. Within DIMER the pipeline is an inference component and a zero-configuration baseline for pose estimation, not a certified estimator for any camera, activity or population.
+
+###### Primary Intended Users
+
+Intended users are machine-learning engineers, computer-vision developers, and data analysts integrating pose estimation into research prototypes, internal tooling, or the DIMER workbench. A user is expected to understand that stage 1 is a closed-set photograph detector whose misses and merges silently drop or corrupt poses (it finds no `person` on the tutorial's cartoon), that stage 2 returns 17 joints for any box, person or not, with the heatmap maximum as the only signal, that those scores are per-joint ranking signals and not calibrated probabilities, that both thresholds trade recall against spurious boxes and joints and must be tuned per deployment, that occlusion, crowding, unusual poses, children, loose clothing and unusual viewpoints are distribution shifts from COCO-style photographs, that left/right joint labels follow the subject's anatomy and can swap under ambiguity, and that OKS-based accuracy can only be measured on a keypoint-labelled image set they supply. Users who need bottom-up multi-person association, 3-D pose, tracking, hand or face keypoints, or real-time throughput are expected to know none of that is provided here.
+
+###### Out-of-scope use cases
+
+1. **Capability boundary:** no bottom-up association (every pose needs a box), no 3-D pose, no tracking across frames, no hand, face or foot keypoints beyond the 17 COCO joints (ViTPose+ and whole-body checkpoints cover those), no identity, no action recognition, no batching, and no calibrated confidence. Real-time use is not claimed.
+2. **Input boundary:** `estimate` rejects non-PIL images (`TypeError`), sides below `MIN_IMAGE_SIDE = 16` px or above `MAX_IMAGE_SIDE = 4096` px, more than `MAX_PERSONS = 50` boxes or an empty box list, boxes that are not four numbers, empty or outside the image, and thresholds outside `[0, 1]` (`ValueError`/`TypeError`). Stage 1 squashes the image to 640×640, so tiny or extreme-aspect people are found worse; stage 2 warps each box to 192×256, so a box that is much wider than tall, or that cuts off limbs, distorts or loses joints.
+3. **Input boundary:** the pose model was trained on COCO keypoint annotations (and, per the paper, evaluated on COCO, AI Challenger, MPII and OCHuman) — photographs of people in everyday scenes; the detector on COCO detection. Drawings, cartoons, mannequins, statues, infants, heavily occluded or overlapping people, unusual viewpoints (top-down, underwater), thermal or infrared imagery, and animals fall outside what the upstream authors evaluated and what this repository measured; results on them are undefined, not merely degraded — the tutorial's cartoon is exactly such an input, and its clean result is a courtesy of the drawing, not evidence.
+4. **Decision boundary:** not for autonomous decisions that act on poses — fall detection alerts, workplace safety enforcement, clinical gait or rehabilitation assessment, biometric or behavioural identification, surveillance analytics — without a human reviewing the skeletons and a locally measured OKS-AP or PCK on the deployment's own labelled imagery.
+
+#### Factors
+
+###### Groups
+
+This pipeline is human-centric by construction: both stages exist to find and articulate people, and their accuracy is known from the pose-estimation literature to vary by body size and shape, age (children and infants are under-represented in COCO), skin tone and lighting, clothing (loose, layered, religious or cultural dress hides joints), mobility aids and prosthetics, and pose (wheelchair users, people lying down, dancers and athletes in extreme poses) — as well as by the detector's own person-detection disparities. Neither the upstream authors nor this repository evaluated per-group performance for these checkpoints; the fairness of any deployment is unknown, not known to be equal. The operator who estimates poses of people is responsible for a per-group audit on their own imagery, stratified by the factors above, and for the consent and purpose limitations that apply to processing images of identifiable people.
+
+###### Instrumentation
+
+The upstream training instrument is the consumer camera behind COCO — daytime, colour, mostly well-exposed photographs at web resolution, with human-annotated keypoints following COCO conventions (visible joints marked, left/right by the subject's anatomy) — and, for stage 1, the same camera population with box annotations. Inference images arrive from whatever produced them — a phone, a webcam, CCTV, a sports broadcast frame, a rendered scene — and resolution, motion blur, compression, exposure, lens distortion and viewpoint all change the visual evidence; stage 1's 640×640 resize and stage 2's 192×256 crop discard resolution and distort aspect on every image regardless of source. The pipeline validates type, size and box geometry only; it cannot detect a night frame, a fisheye lens, a rendered scene or a box that contains no person. The synthetic tutorial drawing (flat colours, no texture, no background clutter) is a rendering instrument far from any camera: stage 1 does not recognise it as a person at all, while stage 2 — given the box — locates all 17 drawn joints within 13 px on average, which shows how differently the two stages respond to the same distribution shift.
+
+###### Environment
+
+Operating environment: Python 3.12 with `torch==2.14.0`, `transformers==4.57.6`, `safetensors==0.8.0`, `numpy==2.5.3`, `pillow==11.3.0`, float32 on CPU; CUDA is used automatically when visible but was not exercised for this card. Both snapshots declare slow image processors (transformers prints `use_fast` notices); they are used as declared. Measured on the reference machine with the GPU hidden (`CUDA_VISIBLE_DEVICES=-1`) and the Hub offline (`HF_HUB_OFFLINE=1`): `verify_snapshot` + `verify_detector_snapshot` on the two snapshots (532 MB) 0.28 s; loading both models 0.4 s with `torch`/`transformers` already imported (the imports themselves add several seconds on first use); stage 1 on a 640×640 drawing 0.30 s; stage 2 on one person 0.15 s; `estimate` end to end with stage 1 finding nothing 0.23 s — stage-2 cost is per person and small. Data environment: the models assume a photograph of people in everyday scenes with boxes that frame one person each; the synthetic drawing violates the photograph assumption (stage 1 fails) and satisfies the one-person-per-box assumption (stage 2 succeeds), and is where the measured behaviour holds. Real cameras, crowds, occlusion and unusual poses were not measured, and the pipeline reports no signal when they degrade the output — beyond the heatmap scores, which are not calibrated.
+
+#### Metrics
+
+###### Performance Measures
+
+The pipeline reports no accuracy measure. Each joint carries `score`, the maximum of its ViTPose heatmap after the crop's affine warp — a ranking signal per joint within one crop, not a probability that the joint is where it says and not a visibility flag — and each detected person carries `person_score`, RT-DETR's per-class sigmoid for `person`, or `None` for a caller box; `n_keypoints` and `mean_keypoint_score` summarise the output, they do not measure it. The repository ships `keypoint_pck`, percentage of correct keypoints — a named reference joint counts as correct when the predicted joint of the same name lies within `PCK_FRACTION = 0.1` of the person box's longest side, with the mean pixel error alongside — because it is the simplest sanity primitive; COCO's OKS-based average precision (the benchmark metric, which weights joints by type and scales by object size) and PCKh are not implemented, since they need a keypoint-labelled image set with matching conventions that the caller must choose. The public `evaluation_report(result, reference_keypoints=None)` stage returns that report in machine-readable form: one `keypoint_pck` entry per person (correct/total, radius, mean error), scoring all 17 predicted joints regardless of `keypoint_threshold`, with the verdict `sample-sanity`; or the verdict `not-measurable` naming the labelled set that would be required when no reference is supplied. The upstream paper's COCO numbers (ViTPose-B: 75.8 AP on COCO val with the paper's detector) are upstream-reported and this pipeline does not reproduce or claim them.
+
+###### Decision thresholds
+
+Two thresholds are applied and exposed as module constants, both taken from the pinned ViTPose README's two-stage example and neither tuned by this repository: `DETECTION_THRESHOLD = 0.3` keeps a stage-1 box only if RT-DETR's sigmoid score for `person` is at least 0.3 (no NMS beyond DETR's set prediction), and `KEYPOINT_THRESHOLD = 0.3` keeps a joint in `keypoints` only if its heatmap maximum is at least 0.3 (every joint remains in `all_keypoints`). Both can be overridden per call. The smoke run shows why they are deployment decisions: on the drawing stage 1 returns nothing at 0.3 and seven low-confidence `person` proposals at 0.05, all 17 drawn joints score 0.85–0.97 in stage 2, and a box over empty background scores every joint below 0.04 — so on this evidence 0.3 separates the cases cleanly, but drawings and blank boxes are not photographs. A deployment owns tuning both on its own labelled imagery: lower the detection threshold when a missed person costs more than a spurious skeleton, raise the keypoint threshold when an invented joint (an occluded wrist placed on a neighbour) costs more than a missing one, and re-tune whenever the camera, scene or population changes.
+
+###### Approaches to uncertainty and variability
+
+This repository reports no central metric value and therefore no dispersion: the smoke run records timings, scores, coordinates and one PCK on one drawn person, not accuracy. Run-to-run variability comes only from floating-point kernel selection across CPU builds and accelerators; there is no sampling and no seed to set, so a fixed input on fixed hardware is repeatable but not guaranteed bitwise-identical across machines (the drawing has no text rendering and is byte-stable across Pillow builds). The scores are heatmap maxima, not calibrated confidences: 17 joints at 0.85–0.97 on a cartoon whose joints the model has never seen photographed, and 17 joints below 0.04 on a box of background, are two observations that bracket the behaviour, not a calibration curve; the mean error of 12.8 px against the drawn joints (PCK 17/17 within 48 px) includes the ambiguity of where a drawn joint "is". A caller who needs calibrated confidences must fit a calibration map on their own labelled imagery; a caller who needs an uncertainty estimate for a metric must supply labelled images and compute it over many images or bootstrap resamples themselves.
+
+#### Ethical considerations and biases
+
+No external ethics board, red-team, or population-specific clearance reviewed this repository or, to our knowledge, either upstream checkpoint; nothing below should be read as implying one.
+
+###### Data
+
+The snapshot README and the paper describe training on COCO keypoint annotations (per the README, 118k images and 150k human instances with up to 17 keypoints each) with the ViT backbone pretrained by masked autoencoding on ImageNet; the detector was trained on COCO detection. COCO contains photographs of identifiable people — faces, bodies, children, private settings — collected from Flickr under Creative Commons licences and annotated by crowd workers; personal data in both training corpora is present by construction and was not audited here. This repository distributes code, tests, and documentation; it does not distribute the 360,007,012-byte ViTPose `model.safetensors` or the 172,175,856-byte RT-DETR `model.safetensors`, which are staged locally under `weights/vitpose-base/` and `weights/rtdetr-r50vd/` and git-ignored, and it ships no photographs — the tutorial person is drawn in code. The operator must audit the images they submit for consent and purpose: the pipeline localises and articulates every person it is pointed at, with no content check.
+
+###### Human Life
+
+This pipeline is not intended for decisions in health, safety, criminal justice, employment, credit, or housing, and it has not been validated or certified for any of them by this repository, the upstream authors, or any regulator. Foreseeable but unintended sensitive uses — fall or distress detection in care settings, clinical gait, posture or rehabilitation assessment, workplace ergonomics enforcement, behavioural or gait-based identification, surveillance analytics, sports adjudication — would be admissible only with human review of the skeletons, a locally measured OKS-AP or PCK on the deployment's own labelled imagery stratified by the groups named above, a documented threshold and re-validation policy for both stages, the consent of the people depicted, and whatever regulatory clearance the domain requires.
+
+###### Mitigations
+
+- **Supply-chain integrity:** `MODEL_REVISION` and `DETECTOR_REVISION` are 40-hex commits; each stager refuses a manifest whose `modelId`/`revision` differ from its package constants and fetches only manifest-listed files at that revision when `allow_download=True`; each verifier checks all 4 listed files' byte sizes and SHA-256 before any load; `from_pretrained` loads only from the two verified directories with `local_files_only=True`, always passes `trust_remote_code=False` (and `use_pretrained_backbone=False` to the detector), refuses a pose snapshot whose `id2label` differs from `KEYPOINT_NAMES`, and the smoke run loaded and ran both stages with `HF_HUB_OFFLINE=1`. No pickle checkpoint exists at either revision. Tests flip one hex digit of either manifest digest and assert the loader refuses; another asserts a foreign manifest is refused by both stagers; the import-boundary tests assert that a missing or tampered snapshot — of either model — is refused before `torch` or `transformers` is imported; another asserts `KEYPOINT_NAMES` and `SKELETON_EDGES` equal the committed `config.json`.
+- **Input integrity:** the public `validate_inputs(image, *, person_boxes, detection_threshold, keypoint_threshold)` stage applies exactly the checks `estimate` applies (both route through one shared private checker) and returns an input manifest recording the schema, the ceilings, the observed input, the boxes and their source, both thresholds, the verdict and both identities; `validate_image` rejects non-PIL inputs and sides outside 16–4096 px; boxes are checked for count, shape, numbers, non-emptiness and containment; thresholds outside `[0, 1]` (and booleans) are rejected; `detect_people` raises on a malformed detector object; `estimate` raises when the pose stage returns the wrong number of persons or joints out of `KEYPOINT_NAMES` order; `evaluation_report` rejects mismatched reference counts and unknown joint names.
+- **Reproducibility:** exact `==` pins in `pyproject.toml`; both processors used as their snapshots declare them; every result carries both `model_id`/`model_revision` pairs, both thresholds, the box source and all 17 joints with scores.
+- **Refusals:** no batching, no download without the explicit flag, no thresholds hidden inside the runners, no NMS or joint smoothing that would hide the models' raw behaviour, no pickle deserialisation, no attempt to guess whether a box contains a person.
+- No statistical mitigation (class balancing, subsampling) applies: no training happens in this repository.
+
+###### Risks and harms
+
+- **Surveillance and profiling:** the pipeline finds and articulates every person in an image with no consent or purpose check; poses enable gait, posture and behaviour analysis that can identify or profile people, and per-group accuracy is unaudited.
+- **Skeletons on non-people:** stage 2 returns 17 joints for any box — a box of background scored every joint below 0.04 in the smoke run — so a wrong detection, a mannequin or a statue yields a low-scoring skeleton that a system ignoring scores treats as a person.
+- **Missed or merged people:** a closed-set detector that misses a person (the cartoon at 0.3), or merges two, silently drops or corrupts a pose; the downstream consumer bears the harm.
+- **Invented joints and left/right swaps:** an occluded joint is still placed somewhere, often on a neighbour's body, and left/right labels can swap under ambiguous viewpoints; only the uncalibrated score hints at it.
+- **Automation bias:** clean skeletons with 0.9+ scores invite trust that heatmap maxima have not earned.
+- **Aspect and crop distortion:** the 640×640 squash and 192×256 warp degrade wide boxes and tiny people silently.
+- **Bias amplification:** any population, pose, clothing or scene COCO under-represents is reproduced as uneven accuracy, undetected because no per-group evaluation exists.
+- **Resource use:** 532 MB of weights and ~0.5 s per image-plus-person on the reference CPU; a video stream still saturates a shared host, and the CUDA path was not measured.
+
+###### Use cases
+
+Prohibited even where the models would work: estimating poses in order to surveil, track, identify, profile or score people, or to enable unlawful discrimination in employment, housing, credit, insurance, education, healthcare access or law enforcement; processing imagery of identifiable people without the consent, privacy and data-protection basis the jurisdiction requires; deceptive uses that present skeletons or derived measurements as verified facts or as evidence; autonomous safety, clinical or physical-control actions based on unreviewed poses; and any use that violates the upstream Apache-2.0 licence terms of either checkpoint or the DIMER deployment terms. Autonomous high-consequence actions triggered by unreviewed poses are prohibited by the intended-use contract above.
+
+## Immutable provenance
+
+- Model: `usyd-community/vitpose-base`
+- Revision: `95be2991424e646950d656bb7fc15ec9be119700`
+- Snapshot manifest: `weights/vitpose-base/dimer-base-manifest.json`, 4 files, `totalBytes` 360020483
+- `model.safetensors` SHA-256: `cd9a4e6cefc33c51ddcc32dd509fc4114b5845256463a69a10ea2dfde402b2f8` (360,007,012 bytes, float32)
+- `config.json` SHA-256: `488377867b16542e0c0025a0eab646abfd066e67f115ab3ec100e3af49872787` (1,799 bytes; `VitPoseForPoseEstimation`, 17 keypoints, 19 skeleton edges)
+- Person detector: `PekingU/rtdetr_r50vd` @ `df939e661d8c52e80608d1ec566561aabd25a4e7`; manifest `weights/rtdetr-r50vd/dimer-base-manifest.json`, 4 files, `totalBytes` 172190863; `model.safetensors` SHA-256 `5263d5521eff3e356f6cd8a371fd5dfb891725beda5f713674f79669115cdc64` (172,175,856 bytes, float32)
+- Weight format: SafeTensors for both; loaders `VitPoseForPoseEstimation.from_pretrained(<dir>, local_files_only=True, trust_remote_code=False)` and `RTDetrForObjectDetection.from_pretrained(<dir>, local_files_only=True, trust_remote_code=False, use_pretrained_backbone=False)` with `AutoImageProcessor` from each directory. No pickle checkpoint exists at either revision.
+
+## Input/output contract
+
+- `VitPoseKeypointPipeline.from_pretrained(device=None, weights_dir=None, detector_dir=None, allow_download=False)` — stages missing manifest files of both snapshots (only with `allow_download=True`), verifies both, loads both; `device` defaults to `cuda:0` when visible, else `cpu`.
+- `detect_people(image, *, threshold=0.3) -> dict` with keys `persons` (list of `{"box": [x0, y0, x1, y1], "score": float}` sorted by descending score, at most 50), `n_persons`, `threshold`, `width`, `height`, `detector_model_id`, `detector_revision`.
+- `estimate(image, *, person_boxes=None, detection_threshold=0.3, keypoint_threshold=0.3) -> dict` with keys `poses` (per person: `box`, `person_score` or `None`, `keypoints` at/above the threshold, `all_keypoints` — 17 `{"name", "x", "y", "score"}` in `KEYPOINT_NAMES` order — `n_keypoints`, `mean_keypoint_score`), `n_persons`, `box_source` (`caller` | `detector`), both thresholds, `width`, `height`, both identity pairs.
+- Ceilings and constants: `MIN_IMAGE_SIDE = 16`, `MAX_IMAGE_SIDE = 4096`, `MAX_PERSONS = 50`, `DETECTION_THRESHOLD = 0.3`, `KEYPOINT_THRESHOLD = 0.3`, `KEYPOINT_NAMES` (17), `SKELETON_EDGES` (19), `DETECTOR_PERSON_LABEL = "person"`, `PCK_FRACTION = 0.1`, `INPUT_SCHEMA`.
+- `keypoint_pck(predicted, reference, box, *, fraction=0.1) -> dict`; `validate_inputs(image, *, person_boxes, detection_threshold, keypoint_threshold, names) -> dict`; `evaluation_report(result, reference_keypoints=None, *, sample_kind) -> dict` where `reference_keypoints` holds one `{name: (x, y)}` mapping per pose; `verify_snapshot`/`verify_detector_snapshot(path=None) -> dict`; `stage_missing_files`/`stage_missing_detector_files(path=None, *, allow_download=False, downloader=None) -> list[str]`.
+
+## Runtime
+
+- Pins: `torch==2.14.0`, `transformers==4.57.6`, `safetensors==0.8.0`, `numpy==2.5.3`, `pillow==11.3.0`, `huggingface-hub==0.36.2`; Python 3.12.
+- Precision: float32; stage 1 resize to 640×640, rescale only (`RTDetrImageProcessor`); stage 2 affine warp of each box to 192×256, ImageNet mean/std (`VitPoseImageProcessor`); both slow processors as declared.
+- Measured 2026-09-14 in the Windows venv (`torch 2.14.0+cu130`) with `CUDA_VISIBLE_DEVICES=-1` and `HF_HUB_OFFLINE=1`, device `cpu`: both verifiers 0.28 s (4 + 4 files, 360 MB + 172 MB); both loads 0.4 s with `torch`/`transformers` already imported; on a synthetic 640×640 cartoon person (head, torso, arms and legs in flat colours drawn from 17 joint coordinates, box [180, 80, 460, 560]): `detect_people` at 0.3 → **0 persons** in 0.30 s (7 `person` proposals at 0.05); `estimate` without boxes → 0 poses in 0.23 s (`box_source` detector); `estimate` with the drawn box → 1 pose in 0.15 s, 17/17 joints kept, mean keypoint score 0.930 (Nose 0.95, L/R_Eye 0.96/0.93, L/R_Ear 0.97/0.96, L/R_Shoulder 0.91/0.96, L/R_Elbow 0.96/0.94, L/R_Wrist 0.91/0.92, L/R_Hip 0.85/0.89, L/R_Knee 0.89/0.88, L/R_Ankle 0.95/0.97); `evaluation_report` against the drawn joints: `keypoint_pck` 1.0 (17/17 within the 48 px radius), mean error 12.8 px, verdict `sample-sanity`; a 640×640 blank image with a caller box [100, 100, 300, 500] → 17 joints all scored ≤ 0.038, 0 kept.
+- Tutorial execution: `tutorials/vitpose_keypoint_colab.ipynb` ran top-to-bottom in a fresh local kernel; recorded in `docs/release-verification.md` as pre-flight, not supported-runtime evidence.
+- Tests: `pytest -q -o addopts= tests` — offline, no weights required; `ruff check src tests tools` clean.
+- Not executed: CUDA path, half precision, the fast image processors, the detector-supplied-box branch of `estimate` on a real person (stage 1 finds none on the drawing), multi-person images, occlusion, any OKS-AP or PCK measurement against labelled photographs.
+
+## References
+
+- Xu et al. ViTPose: Simple Vision Transformer Baselines for Human Pose Estimation. NeurIPS 2022. https://arxiv.org/abs/2204.12484
+- Zhao et al. DETRs Beat YOLOs on Real-time Object Detection. CVPR 2024. https://arxiv.org/abs/2304.08069
+- Lin et al. Microsoft COCO: Common Objects in Context (keypoint annotations). ECCV 2014. https://arxiv.org/abs/1405.0312
+- Upstream code: https://github.com/ViTAE-Transformer/ViTPose
+- Upstream cards: https://huggingface.co/usyd-community/vitpose-base · https://huggingface.co/PekingU/rtdetr_r50vd
+- Transformers `ViTPose` and `RT-DETR` documentation: https://huggingface.co/docs/transformers/model_doc/vitpose · https://huggingface.co/docs/transformers/model_doc/rt_detr
+- Sibling detector pipeline: https://github.com/kurtvalcorza/rtdetr-detection-pipeline
