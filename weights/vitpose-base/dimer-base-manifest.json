@@ -1,0 +1,30 @@
+{
+  "format": "dimer_hf_snapshot",
+  "formatVersion": 1,
+  "modelKey": "vitpose-base",
+  "modelId": "usyd-community/vitpose-base",
+  "revision": "95be2991424e646950d656bb7fc15ec9be119700",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 11309,
+      "sha256": "6e956c405569ad33e9cce408193376a0104bf610e8928bbfa94759603b541578"
+    },
+    {
+      "path": "config.json",
+      "bytes": 1799,
+      "sha256": "488377867b16542e0c0025a0eab646abfd066e67f115ab3ec100e3af49872787"
+    },
+    {
+      "path": "model.safetensors",
+      "bytes": 360007012,
+      "sha256": "cd9a4e6cefc33c51ddcc32dd509fc4114b5845256463a69a10ea2dfde402b2f8"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "bytes": 363,
+      "sha256": "9b11cadc98c30b968a70cc1658ce1fbd74b721b0f21402a2ff8bc1dc9d1474a0"
+    }
+  ],
+  "totalBytes": 360020483
+}

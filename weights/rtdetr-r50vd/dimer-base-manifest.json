@@ -1,0 +1,30 @@
+{
+  "format": "dimer_hf_snapshot",
+  "formatVersion": 1,
+  "modelKey": "rtdetr-r50vd",
+  "modelId": "PekingU/rtdetr_r50vd",
+  "revision": "df939e661d8c52e80608d1ec566561aabd25a4e7",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 9053,
+      "sha256": "4a0c10ddd0dbf6a2c6815cfc1613a5d74f3b0e7c8c77f0252212d3e5365e98cb"
+    },
+    {
+      "path": "config.json",
+      "bytes": 5113,
+      "sha256": "2ed2a305c51eef46715eb755a02b2a266ecfb752936cc9574bb5714601c2742d"
+    },
+    {
+      "path": "model.safetensors",
+      "bytes": 172175856,
+      "sha256": "5263d5521eff3e356f6cd8a371fd5dfb891725beda5f713674f79669115cdc64"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "bytes": 841,
+      "sha256": "ffb4b9461a1dad746be8f0f9c8330ed7743a1ba5fba4f75c232cd281b3d4c64a"
+    }
+  ],
+  "totalBytes": 172190863
+}
