@@ -122,7 +122,7 @@ they are measurements for the stated runtime, not general estimates.
 
 | Date (UTC) | Commit / notebook blob | Executor | Path exercised | Wall | Outcome |
 |---|---|---|---|---|---|
-__LOCAL_ROW__
+| 2026-09-14 | notebook blob `3fcfd7c0d6f7` (commit `e1cd703`, generated at `ebe84a2`; `NOTEBOOK_SOURCE.repository_revision` = `ebe84a2…`) | Local Windows-venv harness (`run_nb_local.py`: nbclient 0.11.0, fresh `python3` kernel, `CUDA_VISIBLE_DEVICES=-1`, `DIMER_NOTEBOOK_CI_PREINSTALLED=1`), Python 3.12.10, torch 2.14.0+cu130, transformers 4.57.6 | Default synthetic path, all 8 code cells: pinned install skipped (pre-installed), both stagers fetched all 4 + 4 manifest entries (360 MB + 172 MB) from the Hub cache at the pinned revisions into the scratch `weights/`, both verifiers PASS, `detect_people` → 0 persons at 0.3 (finding recorded), `estimate` with the drawn box → 1 pose, 17/17 joints kept, mean keypoint score 0.930, `evaluation_report` `sample-sanity` (`keypoint_pck` 1.0 = 17/17 within 48 px, mean error 12.8 px), 5 outputs written | 60.1 s | PASS — pre-flight only; not promotion evidence |
 
 ### Manual clean-runtime evidence
 
