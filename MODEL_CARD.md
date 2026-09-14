@@ -2,6 +2,7 @@
 license: apache-2.0
 model_card_spec: "1.1"
 pipeline_tag: keypoint-detection
+task: "Others - Keypoint Detection"
 base_model: usyd-community/vitpose-base
 date_published: "2025-01-08"
 date_published_source: "Hugging Face Hub repository creation date of the exact hosted checkpoint (`createdAt` 2025-01-08T12:28:47Z, https://huggingface.co/api/models/usyd-community/vitpose-base — the Transformers-native conversion by the ViTAE group); the ViTPose paper is arXiv:2204.12484 (2022-04) and the pinned revision is the Hub's `main` as of 2026-09-14; the person-detector stage pins PekingU/rtdetr_r50vd (Hub `createdAt` 2024-05-29)"
