@@ -1,4 +1,4 @@
-"""Static release-asset validation for the ViTPose two-stage pose-estimation DIMER pipeline.
+"""Static release-asset validation for the ViTPose-base + RT-DETR two-stage keypoint DIMER pipeline.
 
 Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.0 §4), the tutorial
 registry, model card, README, STATUS.md and weight documentation for source conformance and
@@ -23,65 +23,101 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "vitpose_keypoint_pipeline"
 REPO_NAME = "vitpose-keypoint-pipeline"
 NOTEBOOK_NAME = "vitpose_keypoint_colab.ipynb"
-EXPECTED_PROFILE = "TASK-INFERENCE"
+EXPECTED_PROFILE = "E2E"
 EXPECTED_MODEL_ID = "usyd-community/vitpose-base"
 PIPELINE_CLASS = "VitPoseKeypointPipeline"
-# INF1: the load expression the model cell must carry. This pipeline verifies TWO pinned snapshots,
-# so the loader takes both directories (the template's `model_load`).
+# INF1: the exact load expression the model cell must use (both snapshots verified first; CUDA when visible).
 MODEL_LOAD_EXPR = f"{PIPELINE_CLASS}.from_pretrained(weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR)"
-# The second pinned snapshot (RT-DETR person detector) is legitimately cited by every document.
+# Additional 40-hex revisions a document may legitimately cite: the pinned RT-DETR detector revision.
 KNOWN_SHAS: frozenset[str] = frozenset(("df939e661d8c52e80608d1ec566561aabd25a4e7",))
-
-# NOTEBOOK_SPEC 2.0 §10.3: BYOD is gated off by default so the sample path runs top-to-bottom.
+# Colab form gates that must default to the non-interactive sample path.
 BYOD_GATES = ("USE_BYOD",)
-
+# Machine-readable artifacts the notebook must write (OUT1-OUT3, OUT8, DAT24, EVAL21).
 EXPECTED_OUTPUTS = (
+    "outputs/vitpose_keypoint_train.csv",
     "outputs/vitpose_keypoint_input_manifest.json",
     "outputs/vitpose_keypoint_evaluation_report.json",
+    "outputs/vitpose_keypoint_scene_frozen.png",
+    "outputs/vitpose_keypoint_scene_adapted.png",
+    "outputs/vitpose_keypoint_examples",
+    "outputs/vitpose_keypoint_adapter",
     "outputs/vitpose_keypoint_result.json",
-    "outputs/vitpose_keypoint_keypoints.csv",
-    "outputs/vitpose_keypoint_annotated.png",
 )
-
+# Profile-specific code the notebook must exercise through the carried package's public API.
 CODE_MARKERS = (
-    "input_manifest = validate_inputs(image, person_boxes=None if drawn_box is None else [drawn_box], detection_threshold=detection_threshold, keypoint_threshold=keypoint_threshold, names=[image_name])",
-    "validate_inputs(image, person_boxes=[[0, 0, image.width + 1, 10]])",
-    "stage1 = pipe.detect_people(image, threshold=detection_threshold)",
-    "result = pipe.estimate(image, person_boxes=[drawn_box], detection_threshold=detection_threshold, keypoint_threshold=keypoint_threshold)",
-    "result = pipe.estimate(image, detection_threshold=detection_threshold, keypoint_threshold=keypoint_threshold)",
-    "report = evaluation_report(result, references or None, sample_kind=sample_kind)",
-    "print({'ceilings': {'MIN_IMAGE_SIDE': MIN_IMAGE_SIDE, 'MAX_IMAGE_SIDE': MAX_IMAGE_SIDE, 'MAX_PERSONS': MAX_PERSONS, 'DETECTION_THRESHOLD': DETECTION_THRESHOLD, 'KEYPOINT_THRESHOLD': KEYPOINT_THRESHOLD, 'KEYPOINT_NAMES': list(KEYPOINT_NAMES), 'PCK_FRACTION': PCK_FRACTION}})",
-    "detection_threshold = 0.3",
-    "keypoint_threshold = 0.3",
+    "corpus_files = fetch_corpus(cache_dir='weights/coco-val-persons')",
+    "corpus = read_corpus(corpus_files)",
+    "splits = build_sample_dataset(corpus, seed=SPLIT_SEED)",
+    "clean_test = read_corpus({k: v for k, v in corpus_files.items() if k in test_images}, target_height=None)",
+    "records = load_byod_dataset(byod_zip)",
+    "splits = split_dataset(records, seed=SPLIT_SEED)",
+    "dataset_manifests = {name: validate_dataset(part) for name, part in splits.items()}",
+    "disjoint = check_split_disjoint(splits)",
+    "write_dataset_csv(train_records, 'outputs/vitpose_keypoint_train.csv')",
+    "validate_dataset(probe)",
+    "print({'ceilings': {'MIN_IMAGE_SIDE': MIN_IMAGE_SIDE, 'MAX_IMAGE_SIDE': MAX_IMAGE_SIDE, 'MAX_PERSONS': MAX_PERSONS, 'DETECTION_THRESHOLD': DETECTION_THRESHOLD, 'KEYPOINT_THRESHOLD': KEYPOINT_THRESHOLD, 'PCK_FRACTION': PCK_FRACTION, 'MIN_LABELLED': MIN_LABELLED, 'MIN_RECORDS': MIN_RECORDS, 'MAX_RECORDS': MAX_RECORDS",
     "def cartoon_person(width=640, height=640):",
     "DRAWN_BOX = [180.0, 80.0, 460.0, 560.0]",
-    "image = cartoon_person()",
-    "hashlib.sha256(np.asarray(image.convert('RGB')).tobytes()).hexdigest()",
-    "result['box_source']",
-    "annotated.save('outputs/vitpose_keypoint_annotated.png')",
-    "writer.writerow(['image', 'person', 'keypoint', 'x', 'y', 'score', 'kept'])",
+    "input_manifest = validate_inputs(scene, person_boxes=[DRAWN_BOX], detection_threshold=DETECTION_THRESHOLD, keypoint_threshold=KEYPOINT_THRESHOLD, names=[scene_name])",
+    "validate_inputs(scene, person_boxes=[[0, 0, scene.width + 1, 10]])",
+    "stage1 = pipe.detect_people(scene, threshold=DETECTION_THRESHOLD)",
+    "result = pipeline.estimate(scene, person_boxes=[DRAWN_BOX], detection_threshold=DETECTION_THRESHOLD, keypoint_threshold=KEYPOINT_THRESHOLD)",
+    "'seventeen_joints_in_order': [kp['name'] for kp in pose['all_keypoints']] == list(KEYPOINT_NAMES)",
+    "report = evaluation_report(result, [scene_reference], sample_kind=",
+    "baseline_centre = box_centre_baseline(test_records)",
+    "baseline_prior = mean_pose_baseline(train_records, test_records)",
+    "frozen_test = pipe.evaluate(test_records)",
+    "frozen_clean = pipe.evaluate(clean_test) if clean_test is not None else None",
+    "assert frozen_test['pck'] > baseline_centre['pck']",
+    "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=TRAINABLE_BLOCKS, progress=report)",
+    "adapted_test = pipe.evaluate(test_records)",
+    "adapted_val = pipe.evaluate(val_records)",
+    "assert adapted_test['pck'] > frozen_test['pck']",
+    "adapted_scene_result, adapted_scene = estimate_scene(pipe, 'adapted')",
+    "frozen_base = VitPoseKeypointPipeline.from_pretrained(weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
+    "pipe.save_artifact(artifact_dir, metadata={'tutorial': 'vitpose_keypoint', 'data_source': data_source})",
+    "reloaded = VitPoseKeypointPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
+    "assert parity['identical_persons'] == parity['of']",
     "'model_revision': MODEL_REVISION",
     "'model_license': MODEL_LICENSE",
     "'detector_revision': DETECTOR_REVISION",
+    "'weight_file': WEIGHT_FILE, 'weight_format': 'safetensors, digest-verified', 'weight_sha256': pipe.weight_sha256",
+    "'corpus': {'name': CORPUS_NAME, 'release': CORPUS_RELEASE, 'license': CORPUS_LICENSE, 'base_url': CORPUS_BASE_URL, 'bytes': CORPUS_BYTES, 'pinned_photographs': CORPUS_IMAGES, 'pinned_persons': CORPUS_PERSONS",
     "transformers.__version__",
     "'device': pipe.device",
 )
-
+# Profile-specific learner-facing statements.
 MARKDOWN_MARKERS = (
-    "**Capability:** two-stage human pose estimation",
-    "**No adaptation occurs:**",
-    "Both thresholds are **caller-owned request parameters**",
-    "**maximum of that joint's heatmap after the crop's affine warp — a ranking signal per joint, not a calibrated probability**",
-    "finds **no** person at the default 0.3",
-    "COCO's OKS-based average precision needs a keypoint-labelled image set",
-    "the verdict is `not-measurable`",
-    "`sample-sanity`",
-    "**Stage 1 is a closed-set",
-    "**Stage 2 returns 17 joints for any box**",
+    "**Capability:** two-stage human pose estimation (`person` boxes from the pinned `PekingU/rtdetr_r50vd` detector or boxes you supply, then 17 COCO keypoints per person from the pinned `usyd-community/vitpose-base` weights) and bounded supervised fine-tuning",
+    "**Apache-2.0** licence",
+    "**adaptation with labelled persons**",
+    "**distant, low-quality person**",
+    "**40 px tall**",
+    "**0.957**",
+    "**0.598**",
+    "**box-only baselines**",
+    "**PCK**",
+    "**mean OKS**",
+    "**box-centre**",
+    "**mean-pose**",
+    "**joint-weighted mean-squared error**",
+    "**mean of validation PCK and OKS**",
+    "**no dispersion estimate**",
+    "**Snapshot note:**",
+    "finds **no** `person` at the default 0.3",
     "bottom-up or multi-person association without boxes",
+    "## 4. COCO persons, the small-person degradation and the split",
+    "## 5. Estimate a synthetic drawing through the two-stage inference contract",
+    "## 6. Baselines, the frozen model on the small persons — and on the clean ones",
+    "## 7. Bounded fine-tuning of the heatmap head and the last encoder blocks",
+    "## 8. Held-out evaluation",
+    "## 9. Look at the skeletons, export the adapter and reload it",
+    "**Degradation:**",
+    "**Leakage:**",
 )
-
-# Runtime/model-library access must stay inside the carried module (ST1/ST2).
+# Direct-library use that must stay inside the carried module cells (G2: the notebook calls the
+# pipeline API, it does not reimplement it). Checked on every code cell except the embedded ones
+# and the generator-owned install cell.
 FORBIDDEN_OUTSIDE_MODULE = (
     "from huggingface_hub import",
     "import huggingface_hub",
@@ -94,7 +130,16 @@ FORBIDDEN_OUTSIDE_MODULE = (
     "post_process_pose_estimation(",
     "post_process_object_detection(",
     "torch.inference_mode(",
+    "torch.optim",
+    ".backward(",
+    "requires_grad",
+    "from safetensors",
+    "import safetensors",
+    "urllib.request",
+    "pipe._model",
+    "extractall(",
 )
+INSTALL_CELL_MARKER = "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', *PINS], check=True)"
 
 # ---------------------------------------------------------------------------
 # Shared checks. Everything below is source/structure validation only. Passing
@@ -166,7 +211,7 @@ COMMON_MARKDOWN_MARKERS = (
     "**Learning objectives:**",
     "## Prerequisites",
     "Do not upload confidential or restricted",
-    "- **External access:** the Hugging Face Hub only",
+    "- **External access:** the Hugging Face Hub",
     "## 1. Install the pinned runtime",
     "## 2. Pipeline code (carried verbatim from",
     "## 3. Pin, stage and verify the model",
@@ -180,14 +225,19 @@ COMMON_MARKDOWN_MARKERS = (
 # Patterns that must never appear in tutorial code (comment-stripped), in any cell.
 FORBIDDEN_PATTERNS = (
     ("credential in clone URL", re.compile(r"https://[^/'\"\s]*@github\.com/|x-access-token:")),
-    ("repository clone (ST1)", re.compile(r"\bgit\b[^\n]*\bclone\b|github\.com")),
+    ("repository clone (ST1)", re.compile(r"\bgit\b[^\n]*\bclone\b|github\.com/kurtvalcorza")),
     ("editable self-install", re.compile(r"""['"](?:-e|--editable)['"]|pip install (?:-e|--editable)\b""")),
     ("repository package import (ST1)", re.compile(rf"^\s*(?:from|import)\s+{PACKAGE}\b", re.M)),
     ("mutable model reference (MOD14)", re.compile(r"revision\s*=\s*['\"](?:main|latest)['\"]")),
     ("trust_remote_code enabled", re.compile(r"trust_remote_code\s*[=:]\s*True")),
     (
         "unsafe deserialization",
-        re.compile(r"\bpickle\.load|\btorch\.load\s*\(|getattr\(\s*torch\s*,\s*['\"]load['\"]"),
+        re.compile(
+            r"\bpickle\.load"
+            r"|\btorch\.load\s*\((?![^)]*weights_only\s*=\s*True)"
+            r"|weights_only\s*=\s*False"
+            r"|getattr\(\s*torch\s*,\s*['\"]load['\"]"
+        ),
     ),
     ("archive extractall", re.compile(r"\.extractall\s*\(")),
     ("notebook magic or shell escape", re.compile(r"(?m)^\s*[%!]|get_ipython\(\)")),
@@ -362,13 +412,16 @@ def _validate_notebook_structure(path: Path, notebook: dict) -> tuple[list[tuple
     _check(dimer.get("notebook_mode") in ("REFERENCE", "GUIDED", "WORKSHOP"), f"{path.name}: metadata.dimer.notebook_mode must declare a §3.3 pedagogical mode")
     _check(dimer.get("standalone") is True, f"{path.name}: metadata.dimer.standalone must be true (ST6)")
     generated = dimer.get("generated_from")
+    _template = _load_tool("notebook_template").TEMPLATE
     _check(isinstance(generated, dict), f"{path.name}: metadata.dimer.generated_from is required (ST5)")
     _check(generated.get("repository") == REPO_NAME, f"{path.name}: generated_from.repository must be {REPO_NAME}")
     _check(
-        generated.get("module") == f"src/{PACKAGE}/pipeline.py",
-        f"{path.name}: generated_from.module must be src/{PACKAGE}/pipeline.py",
+        generated.get("module") == f"{_template.get('package_dir', f'src/{PACKAGE}')}/{_template.get('entry_module', 'pipeline.py')}",
+        f"{path.name}: generated_from.module must name the template entry module",
     )
-    module_sha = hashlib.sha256(_read(ROOT / "src" / PACKAGE / "pipeline.py").encode("utf-8")).hexdigest()
+    _pkg_dir = ROOT / _template.get("package_dir", f"src/{PACKAGE}")
+    _order = _load_tool("build_notebook")._module_order(_pkg_dir, list(_template.get("modules", ["pipeline.py"])))
+    module_sha = hashlib.sha256("".join(_read(_pkg_dir / m) for m in _order).encode("utf-8")).hexdigest()
     _check(
         generated.get("module_sha256") == module_sha,
         f"{path.name}: generated_from.module_sha256 does not match src/ (PAR4: regenerate the notebook)",
@@ -439,39 +492,47 @@ def _validate_gates(path: Path, code_cells: list[tuple[int, str, ast.Module]]) -
                 )
 
 
-def _validate_embedded_module(path: Path, notebook: dict, build) -> int:
-    """PAR1: exactly one tagged cell, equal to the module after the documented rewrites."""
+def _validate_embedded_modules(path: Path, notebook: dict, build) -> list[int]:
+    """PAR1: one tagged cell per carried module, in dependency order, each equal to its module after
+    the documented rewrites (generator /2 multi-module carrier; ST2 applied per module)."""
     tagged = [
         (index, cell)
         for index, cell in enumerate(notebook.get("cells", []))
         if cell.get("cell_type") == "code" and cell.get("metadata", {}).get("dimer", {}).get("embedded_module")
     ]
-    _check(len(tagged) == 1, f"{path.name}: exactly one cell must be tagged metadata.dimer.embedded_module (ST2)")
-    index, cell = tagged[0]
+    template = _load_tool("notebook_template").TEMPLATE
+    recorded = notebook["metadata"]["dimer"]["generated_from"]["revision"]
+    context = build.load_context(ROOT, template, recorded)
+    expected_rels = context["module_rels"]
     _check(
-        cell["metadata"]["dimer"]["embedded_module"] == f"src/{PACKAGE}/pipeline.py",
-        f"{path.name}: embedded_module tag must name src/{PACKAGE}/pipeline.py",
+        [cell["metadata"]["dimer"]["embedded_module"] for _, cell in tagged] == expected_rels,
+        f"{path.name}: the cells tagged metadata.dimer.embedded_module must be exactly {expected_rels}, in order (ST2)",
     )
-    rewrites = _load_tool("notebook_template").TEMPLATE.get("rewrites", build.REWRITES)
-    expected = build.apply_rewrites(_read(ROOT / "src" / PACKAGE / "pipeline.py"), rewrites)
-    _check(
-        _cell_source(cell).rstrip("\n") + "\n" == expected,
-        f"{path.name}: embedded module differs from src/{PACKAGE}/pipeline.py (PAR1); regenerate the notebook",
-    )
-    return index
+    for (index, cell), module, rel in zip(
+        tagged, context["modules"], context["module_rels"], strict=True
+    ):
+        _check(
+            cell["metadata"]["dimer"].get("module_sha256") == context["per_module_sha256"][rel],
+            f"{path.name}: cell {index} module_sha256 tag does not match {rel}",
+        )
+        _check(
+            _cell_source(cell).rstrip("\n") + "\n" == context["embedded"][module],
+            f"{path.name}: embedded module cell {index} differs from {rel} (PAR1); regenerate the notebook",
+        )
+    return [index for index, _ in tagged]
 
 
 def _validate_identity(
-    path: Path, code_cells: list[tuple[int, str, ast.Module]], embedded_index: int, revision: str
+    path: Path, code_cells: list[tuple[int, str, ast.Module]], embedded: list[int], revision: str
 ) -> None:
     """Identity constants are bound in the carried module only; nothing outside rebinds them."""
     for index, _source, tree in code_cells:
-        if index == embedded_index:
+        if index in embedded:
             continue
         for node in ast.walk(tree):
             rebound = [name for name in _assignment_targets(node) if name in IDENTITY_NAMES]
             _check(not rebound, f"{path.name}: {rebound} must not be rebound outside the module cell (cell {index})")
-    outside = "\n".join(source for index, source, _ in code_cells if index != embedded_index)
+    outside = "\n".join(source for index, source, _ in code_cells if index not in embedded)
     manifest_block = re.search(r"^MANIFEST = (\{.*?^\})$", outside, re.M | re.S)
     _check(manifest_block is not None, f"{path.name}: model cell must carry an inline MANIFEST literal (ST3)")
     outside_without_manifest = outside.replace(manifest_block.group(0), "")
@@ -512,17 +573,20 @@ def _validate_bootstrap_guard(path: Path, code_cells: list[tuple[int, str, ast.M
 
 
 def _validate_notebook_content(
-    path: Path, code_cells: list[tuple[int, str, ast.Module]], markdown: str, embedded_index: int
+    path: Path, code_cells: list[tuple[int, str, ast.Module]], markdown: str, embedded: list[int]
 ) -> None:
     model_id, _revision = _package_identity()
     stripped = {index: _strip_comments(source) for index, source, _ in code_cells}
     code = "\n".join(stripped.values())
-    outside = "\n".join(text for index, text in stripped.items() if index != embedded_index)
+    outside = "\n".join(text for index, text in stripped.items() if index not in embedded)
     missing = [marker for marker in COMMON_CODE_MARKERS + CODE_MARKERS if marker not in code]
     _check(not missing, f"{path.name}: missing required source markers: {missing}")
     present = [label for label, pattern in FORBIDDEN_PATTERNS if pattern.search(code)]
     _check(not present, f"{path.name}: forbidden/insecure source: {present}")
-    leaked = [marker for marker in FORBIDDEN_OUTSIDE_MODULE if marker in outside]
+    outside_stage_cells = "\n".join(
+        text for index, text in stripped.items() if index not in embedded and INSTALL_CELL_MARKER not in text
+    )
+    leaked = [marker for marker in FORBIDDEN_OUTSIDE_MODULE if marker in outside_stage_cells]
     _check(not leaked, f"{path.name}: direct library use outside the carried module cell (G2): {leaked}")
     _check(
         f"pipe = {MODEL_LOAD_EXPR}" in outside,
@@ -547,11 +611,11 @@ def validate_notebooks() -> None:
     build = _load_tool("build_notebook")
     notebook = json.loads(_read(path))
     code_cells, markdown = _validate_notebook_structure(path, notebook)
-    embedded_index = _validate_embedded_module(path, notebook, build)
+    embedded = _validate_embedded_modules(path, notebook, build)
     _model_id, revision = _package_identity()
-    _validate_identity(path, code_cells, embedded_index, revision)
+    _validate_identity(path, code_cells, embedded, revision)
     _validate_parity(path, notebook, code_cells, build)
-    _validate_notebook_content(path, code_cells, markdown, embedded_index)
+    _validate_notebook_content(path, code_cells, markdown, embedded)
     registry = _read(tutorials / "README.md")
     _check(f"`{path.name}`" in registry, f"{path.name} missing from tutorials/README.md")
     _check(f"`{EXPECTED_PROFILE}`" in registry, f"tutorials/README.md must record `{EXPECTED_PROFILE}`")
