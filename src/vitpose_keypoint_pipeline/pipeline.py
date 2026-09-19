@@ -10,11 +10,14 @@ carried detector stage or from the caller.
 
 from __future__ import annotations
 
+# ruff: noqa: E501  -- adaptation-contract lines are kept at the fleet width
 import hashlib
 import json
 import math
+import random
+import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +94,17 @@ MAX_PERSONS = 50
 # PCK normaliser for the sanity metric: a keypoint is "correct" when within this fraction of the
 # person box's longest side of its reference (a stated convention, not the COCO OKS metric).
 PCK_FRACTION = 0.1
+PARAMETER_COUNT = 89_994_513  # ViTPose-base: backbone + heatmap head (the detector is not counted)
+HEAD_PARAMETERS = 4_199_697
+ARTIFACT_FORMAT = f"org.valcorza.{MODEL_KEY}.adapter.v1"
+ARTIFACT_VERSION = "1.0"
+ADAPTER_WEIGHTS = "adapter.safetensors"
+ADAPTER_MANIFEST = "manifest.json"
+WEIGHT_FILE = "model.safetensors"
+MIN_SCORED_RECORDS = 50  # below this a scored set is labelled a small sample
+MAX_EVAL_RECORDS = 5_000
+MAX_TRAINABLE_BLOCKS = 12
+HEATMAP_SIGMA = 2.0  # heatmap pixels; the ViTPose/mmpose target Gaussian
 
 
 def _sha256(path: Path) -> str:
@@ -425,6 +439,85 @@ def evaluation_report(
     }
 
 
+def _weight_digest(root: Path) -> str | None:
+    manifest_path = root / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return None
+    with open(manifest_path, encoding="utf-8") as handle:
+        entries = json.load(handle).get("files", [])
+    return next((e["sha256"] for e in entries if e["path"] == WEIGHT_FILE), None)
+
+
+def _trainable_names(model: Any, trainable_blocks: int) -> list[str]:
+    """The heatmap head plus the last `trainable_blocks` encoder blocks and the final backbone LayerNorm; the patch
+    embedding and the earlier blocks stay frozen."""
+    names = [name for name, _ in model.named_parameters()]
+    layers = sorted({int(n.split(".")[3]) for n in names if n.startswith("backbone.encoder.layer.")})
+    keep = set(layers[len(layers) - trainable_blocks :]) if trainable_blocks else set()
+    out = [n for n in names if n.startswith("head.")]
+    out += [n for n in names if n.startswith("backbone.encoder.layer.") and int(n.split(".")[3]) in keep]
+    if keep:
+        out += [n for n in names if n.startswith("backbone.layernorm")]
+    return out
+
+
+def _check_artifact_manifest(manifest: Mapping[str, Any], artifact_dir: Path, base_sha256: str) -> None:
+    """Refuse an adapter that names another base, another format or a file that does not match its digest."""
+    if manifest.get("format") != ARTIFACT_FORMAT:
+        raise ValueError(f"artifact format {manifest.get('format')!r} != {ARTIFACT_FORMAT!r}")
+    base = manifest.get("base", {})
+    if base.get("model_id") != MODEL_ID or base.get("revision") != MODEL_REVISION:
+        raise ValueError(f"artifact was trained on {base.get('model_id')}@{base.get('revision')}, not {MODEL_ID}@{MODEL_REVISION}")
+    if base.get("weight_sha256") != base_sha256:
+        raise ValueError("artifact base weight digest does not match the verified snapshot")
+    files = manifest.get("files") or []
+    if len(files) != 1 or files[0].get("path") != ADAPTER_WEIGHTS:
+        raise ValueError(f"artifact manifest must list exactly {ADAPTER_WEIGHTS}")
+    weights = artifact_dir / ADAPTER_WEIGHTS
+    if not weights.is_file():
+        raise FileNotFoundError(f"artifact weights missing: {weights}")
+    size = weights.stat().st_size
+    if size != files[0].get("bytes"):
+        raise ValueError(f"{ADAPTER_WEIGHTS}: size {size} != manifest {files[0].get('bytes')}")
+    digest = _sha256(weights)
+    if digest != files[0].get("sha256"):
+        raise ValueError(f"{ADAPTER_WEIGHTS}: sha256 {digest} != manifest {files[0].get('sha256')}")
+    names = manifest.get("tensors") or []
+    if not names or any(not str(n).startswith(("head.", "backbone.encoder.layer.", "backbone.layernorm")) for n in names):
+        raise ValueError("artifact tensors must all belong to the heatmap head, the encoder blocks or the final LayerNorm")
+    blocks = (manifest.get("adapter") or {}).get("trainable_blocks")
+    if not isinstance(blocks, int) or isinstance(blocks, bool) or not 0 <= blocks <= MAX_TRAINABLE_BLOCKS:
+        raise ValueError(f"artifact adapter.trainable_blocks must be an int in 0..{MAX_TRAINABLE_BLOCKS}")
+
+
+def _heatmap_targets(record: Mapping[str, Any], crop: tuple[int, int], heatmap: tuple[int, int]) -> tuple[Any, Any]:
+    """Gaussian heatmap targets (17, H, W) and per-joint weights (17,) for a record in the processor's crop frame:
+    the same centre/scale/warp the processor applies to the image, then the heatmap stride."""
+    import numpy as np
+    from transformers.models.vitpose.image_processing_vitpose import box_to_center_and_scale, get_warp_matrix
+
+    crop_h, crop_w = crop
+    hm_h, hm_w = heatmap
+    x0, y0, x1, y1 = record["box"]
+    center, scale = box_to_center_and_scale(np.array([x0, y0, x1 - x0, y1 - y0], dtype=np.float32), image_width=crop_w, image_height=crop_h)
+    matrix = get_warp_matrix(0.0, center * 2.0, np.array([crop_w, crop_h]) - 1.0, scale * 200.0)
+    stride_x, stride_y = crop_w / hm_w, crop_h / hm_h
+    targets = np.zeros((len(KEYPOINT_NAMES), hm_h, hm_w), dtype=np.float32)
+    weights = np.zeros(len(KEYPOINT_NAMES), dtype=np.float32)
+    ys, xs = np.mgrid[0:hm_h, 0:hm_w]
+    for index, name in enumerate(KEYPOINT_NAMES):
+        if name not in record["keypoints"]:
+            continue
+        px, py = record["keypoints"][name]
+        cx = (matrix[0, 0] * px + matrix[0, 1] * py + matrix[0, 2]) / stride_x
+        cy = (matrix[1, 0] * px + matrix[1, 1] * py + matrix[1, 2]) / stride_y
+        if not (0 <= cx < hm_w and 0 <= cy < hm_h):
+            continue  # a labelled joint outside the padded crop is unweighted, as in the upstream target encoder
+        targets[index] = np.exp(-((xs - cx) ** 2 + (ys - cy) ** 2) / (2.0 * HEATMAP_SIGMA**2))
+        weights[index] = 1.0
+    return targets, weights
+
+
 @dataclass
 class VitPoseKeypointPipeline:
     """``_detect(image, threshold)`` -> [{"box", "score"}] of persons; ``_pose(image, boxes)`` ->
@@ -433,6 +526,10 @@ class VitPoseKeypointPipeline:
     _detect: Callable[[Image.Image, float], list[dict[str, Any]]]
     _pose: Callable[[Image.Image, list[list[float]]], list[list[dict[str, Any]]]]
     device: str = "cpu"
+    _model: Any = field(default=None, repr=False)
+    _processor: Any = field(default=None, repr=False)
+    weight_sha256: str | None = None
+    adapter: dict[str, Any] | None = None
 
     @classmethod
     def from_pretrained(
@@ -490,6 +587,8 @@ class VitPoseKeypointPipeline:
             .to(resolved_device)
             .eval()
         )
+        for param in pose_model.parameters():
+            param.requires_grad_(False)
         pose_id2label = {int(k): v for k, v in pose_model.config.id2label.items()}
         if tuple(pose_id2label[i] for i in range(len(pose_id2label))) != KEYPOINT_NAMES:
             raise RuntimeError("snapshot id2label does not match KEYPOINT_NAMES")
@@ -532,7 +631,7 @@ class VitPoseKeypointPipeline:
                 out.append(joints)
             return out
 
-        return cls(detect, pose, resolved_device)
+        return cls(detect, pose, resolved_device, pose_model, pose_processor, _weight_digest(roots["pose"][0]))
 
     def detect_people(self, image: Image.Image, *, threshold: float = DETECTION_THRESHOLD) -> dict[str, Any]:
         """Stage 1 alone: `person` boxes from the carried RT-DETR, sorted by score."""
@@ -601,3 +700,263 @@ class VitPoseKeypointPipeline:
             "detector_model_id": DETECTOR_MODEL_ID,
             "detector_revision": DETECTOR_REVISION,
         }
+
+    def _require_model(self) -> tuple[Any, Any]:
+        if self._model is None or self._processor is None:
+            raise RuntimeError("this pipeline has no loaded model (injected runner); use from_pretrained for evaluate/adapt")
+        return self._model, self._processor
+
+
+    def predict_keypoints(self, record: Mapping[str, Any]) -> dict[str, list[float]]:
+        """All 17 joints (name -> [x, y]) for a record's person box, through `estimate` with the box as a caller box —
+        the single-person policy the corpus measures use; heatmap scores are not thresholded."""
+        result = self.estimate(record["image"], person_boxes=[record["box"]], keypoint_threshold=0.0)
+        return {kp["name"]: [kp["x"], kp["y"]] for kp in result["poses"][0]["all_keypoints"]}
+
+
+    def evaluate(self, records: Sequence[Mapping[str, Any]], *, progress: Callable[[int, int], None] | None = None) -> dict[str, Any]:
+        """Predict every validated record's joints from its box and score them with `metrics.pose_metrics` (PCK and mean
+        OKS, overall and per category)."""
+        from .metrics import pose_metrics
+        from .samples import validate_dataset
+
+        checked = validate_dataset(records, min_records=1, max_records=MAX_EVAL_RECORDS)["records"]
+        started = time.perf_counter()
+        predictions = []
+        for i, record in enumerate(checked):
+            predictions.append(self.predict_keypoints(record))
+            if progress is not None:
+                progress(i + 1, len(checked))
+        metrics = pose_metrics(predictions, checked)
+        metrics.update(
+            {
+                "verdict": "measured" if len(checked) >= MIN_SCORED_RECORDS else "measured-small-sample",
+                "adapted": self.adapter is not None,
+                "seconds": round(time.perf_counter() - started, 3),
+                "model_id": MODEL_ID,
+                "model_revision": MODEL_REVISION,
+            }
+        )
+        return metrics
+
+
+    def adapt(
+        self,
+        train: Sequence[Mapping[str, Any]],
+        val: Sequence[Mapping[str, Any]] | None = None,
+        *,
+        epochs: int = 8,
+        lr: float = 5e-5,
+        batch_size: int = 8,
+        trainable_blocks: int = 2,
+        seed: int = 0,
+        progress: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """Bounded fine-tuning of the heatmap head and the last `trainable_blocks` encoder blocks (plus the final
+        LayerNorm) on labelled persons: every record's box is affine-warped to the processor's crop exactly as at
+        inference, the labelled joints become Gaussian heatmap targets (sigma `HEATMAP_SIGMA`) in the same frame, and the
+        head's heatmaps are trained with the joint-weighted mean-squared error ViTPose was trained with. AdamW (no weight
+        decay), gradient clipping at 1.0, seeded shuffling, no scheduler, no augmentation; the head's BatchNorm statistics
+        stay frozen so the adapter is parameters-only. Epoch 0 records the frozen
+        model's validation metrics; the epoch with the highest mean of validation PCK and OKS is kept (the final one
+        without a validation split). On any exception the frozen weights are restored. The detector is untouched."""
+        model, processor = self._require_model()  # refuse before importing torch
+        import numpy as np
+        import torch
+
+        from .samples import validate_dataset
+
+        if isinstance(epochs, bool) or not isinstance(epochs, int) or not 1 <= epochs <= 50:
+            raise ValueError("epochs must be an int in 1..50")
+        if not isinstance(lr, int | float) or not 0.0 < float(lr) <= 1e-2:
+            raise ValueError("lr must be in (0, 1e-2]")
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or not 1 <= batch_size <= 64:
+            raise ValueError("batch_size must be an int in 1..64")
+        if isinstance(trainable_blocks, bool) or not isinstance(trainable_blocks, int) or not 0 <= trainable_blocks <= MAX_TRAINABLE_BLOCKS:
+            raise ValueError(f"trainable_blocks must be an int in 0..{MAX_TRAINABLE_BLOCKS}")
+        train_checked = validate_dataset(train)["records"]
+        val_checked = validate_dataset(val, min_records=1)["records"] if val is not None else None
+        names = _trainable_names(model, trainable_blocks)
+        name_set = set(names)
+        device = torch.device(self.device)
+        frozen_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in name_set}
+        previous_adapter = self.adapter
+        cudnn_flags = (torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
+        torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark = True, False  # repeatable on one device
+        history: list[dict[str, Any]] = []
+        started = time.perf_counter()
+
+        def _val() -> dict[str, Any] | None:
+            if val_checked is None:
+                return None
+            result = self.evaluate(val_checked)
+            return {"pck": result["pck"], "oks": result["oks"], "score": (result["pck"] + result["oks"]) / 2.0, "n": result["n"]}
+
+        try:
+            for param in model.parameters():
+                param.requires_grad_(False)
+            params = []
+            for name, param in model.named_parameters():
+                if name in name_set:
+                    param.requires_grad_(True)
+                    params.append(param)
+            n_trainable = sum(p.numel() for p in params)
+            crop = (int(processor.size["height"]), int(processor.size["width"]))
+            prepared = []
+            with torch.no_grad():
+                probe_record = train_checked[0]
+                x0, y0, x1, y1 = probe_record["box"]
+                probe = processor(probe_record["image"], boxes=[np.array([[x0, y0, x1 - x0, y1 - y0]], dtype=np.float32)], return_tensors="pt")
+                heatmap = tuple(model(pixel_values=probe["pixel_values"].to(device)).heatmaps.shape[-2:])
+            for record in train_checked:
+                x0, y0, x1, y1 = record["box"]
+                pixel_values = processor(record["image"], boxes=[np.array([[x0, y0, x1 - x0, y1 - y0]], dtype=np.float32)], return_tensors="pt")["pixel_values"][0]
+                targets, weights = _heatmap_targets(record, crop, heatmap)
+                prepared.append((pixel_values, torch.from_numpy(targets), torch.from_numpy(weights)))
+            prep_seconds = round(time.perf_counter() - started, 3)
+            entry = {"epoch": 0, "train_loss": None, "val": _val(), "note": "frozen model"}
+            history.append(entry)
+            if progress is not None:
+                progress(entry)
+            best_epoch, best_score = 0, (history[0]["val"] or {}).get("score", -1.0)
+            best_state = frozen_state
+            optimizer = torch.optim.AdamW(params, lr=float(lr), weight_decay=0.0)
+            rng = random.Random(seed)
+            torch.manual_seed(seed)
+            for epoch in range(1, epochs + 1):
+                model.train()
+                for module in model.modules():  # BatchNorm statistics stay frozen: small batches, parameters-only adapter
+                    if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+                        module.eval()
+                order = list(range(len(prepared)))
+                rng.shuffle(order)
+                losses = []
+                for start in range(0, len(order), batch_size):
+                    batch = [prepared[k] for k in order[start : start + batch_size]]
+                    pixel_values = torch.stack([b[0] for b in batch]).to(device)
+                    targets = torch.stack([b[1] for b in batch]).to(device)
+                    weights = torch.stack([b[2] for b in batch]).to(device)
+                    heatmaps = model(pixel_values=pixel_values).heatmaps
+                    loss = (((heatmaps - targets) ** 2).mean(dim=(2, 3)) * weights).sum() / weights.sum().clamp(min=1.0)
+                    optimizer.zero_grad(set_to_none=True)
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(params, 1.0)
+                    optimizer.step()
+                    losses.append(float(loss.detach()))
+                model.eval()
+                entry = {"epoch": epoch, "train_loss": sum(losses) / len(losses), "val": _val()}
+                history.append(entry)
+                if progress is not None:
+                    progress(entry)
+                if val_checked is None or entry["val"]["score"] > best_score:
+                    best_epoch, best_score = epoch, (entry["val"] or {}).get("score", -1.0)
+                    best_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in name_set}
+            model.load_state_dict(best_state, strict=False)
+            for param in model.parameters():
+                param.requires_grad_(False)
+            model.eval()
+        except BaseException:
+            model.load_state_dict(frozen_state, strict=False)
+            for param in model.parameters():
+                param.requires_grad_(False)
+            model.eval()
+            self.adapter = previous_adapter
+            raise
+        finally:
+            torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark = cudnn_flags
+        self.adapter = {
+            "trainable_blocks": trainable_blocks,
+            "trainable_names": names,
+            "n_trainable": n_trainable,
+            "n_total": sum(p.numel() for p in model.parameters()),
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "best_epoch": best_epoch,
+            "selection": "highest mean of validation PCK and OKS" if val_checked is not None else "final epoch (no validation split)",
+            "loss": f"joint-weighted mean-squared error against Gaussian heatmap targets (sigma {HEATMAP_SIGMA}) in the {heatmap[0]}x{heatmap[1]} heatmap frame",
+            "lr": float(lr),
+            "seed": seed,
+            "n_train": len(train_checked),
+            "n_val": len(val_checked) if val_checked is not None else 0,
+            "preparation_seconds": prep_seconds,
+            "history": history,
+            "seconds": round(time.perf_counter() - started, 3),
+        }
+        return dict(self.adapter)
+
+
+    def save_artifact(self, output_dir: str | Path, metadata: Mapping[str, Any] | None = None) -> Path:
+        """Write the trained tensors as safetensors plus a manifest naming the base, the digests and the training
+        configuration. Requires a prior `adapt`."""
+        model, _processor = self._require_model()  # refuse before importing torch
+        import torch
+        from safetensors.torch import save_file
+
+        if self.adapter is None:
+            raise RuntimeError("nothing to save: call adapt() first")
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        names = list(self.adapter["trainable_names"])
+        state = model.state_dict()
+        tensors = {name: state[name].detach().cpu().contiguous() for name in names}
+        weights = out / ADAPTER_WEIGHTS
+        save_file(tensors, str(weights), metadata={"format": "pt"})
+        manifest = {
+            "format": ARTIFACT_FORMAT,
+            "version": ARTIFACT_VERSION,
+            "base": {"model_id": MODEL_ID, "revision": MODEL_REVISION, "weight_file": WEIGHT_FILE, "weight_sha256": self.weight_sha256},
+            "adapter": {k: v for k, v in self.adapter.items() if k not in ("history", "trainable_names")},
+            "history": self.adapter["history"],
+            "tensors": names,
+            "files": [{"path": ADAPTER_WEIGHTS, "bytes": weights.stat().st_size, "sha256": _sha256(weights)}],
+            "torch": torch.__version__,
+            "metadata": dict(metadata or {}),
+        }
+        with open(out / ADAPTER_MANIFEST, "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2, ensure_ascii=False)
+        return out
+
+
+    def load_artifact(self, artifact_dir: str | Path) -> dict[str, Any]:
+        """Overlay a saved adapter onto this (freshly loaded) pipeline after checking its manifest, digest and exact
+        tensor set. Refuses tensors outside the recorded head + block scope."""
+        model, _processor = self._require_model()  # refuse before importing safetensors
+        from safetensors.torch import load_file
+
+        artifact = Path(artifact_dir)
+        manifest_path = artifact / ADAPTER_MANIFEST
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"artifact manifest missing: {manifest_path}")
+        with open(manifest_path, encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        _check_artifact_manifest(manifest, artifact, self.weight_sha256 or "")
+        expected = _trainable_names(model, int(manifest["adapter"]["trainable_blocks"]))
+        if sorted(manifest["tensors"]) != sorted(expected):
+            raise ValueError("artifact tensor set does not match its recorded configuration")
+        tensors = load_file(str(artifact / ADAPTER_WEIGHTS))
+        if sorted(tensors) != sorted(expected):
+            raise ValueError("artifact tensor names differ from the manifest")
+        state = model.state_dict()
+        for name, tensor in tensors.items():
+            if tuple(tensor.shape) != tuple(state[name].shape):
+                raise ValueError(f"artifact tensor {name} has shape {tuple(tensor.shape)}, base has {tuple(state[name].shape)}")
+        model.load_state_dict({k: v.to(state[k].device, state[k].dtype) for k, v in tensors.items()}, strict=False)
+        model.eval()
+        self.adapter = {**manifest["adapter"], "trainable_names": expected, "history": manifest.get("history", [])}
+        return dict(self.adapter)
+
+
+    @classmethod
+    def from_artifact(
+        cls,
+        artifact_dir: str | Path,
+        *,
+        device: str | None = None,
+        weights_dir: str | Path | None = None,
+        detector_dir: str | Path | None = None,
+        allow_download: bool = False,
+    ) -> VitPoseKeypointPipeline:
+        """Load the verified base snapshots, then overlay the adapter (verified before deserialising)."""
+        pipe = cls.from_pretrained(device=device, weights_dir=weights_dir, detector_dir=detector_dir, allow_download=allow_download)
+        pipe.load_artifact(artifact_dir)
+        return pipe
