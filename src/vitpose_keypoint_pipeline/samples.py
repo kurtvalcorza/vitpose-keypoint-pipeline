@@ -629,6 +629,32 @@ def check_split_disjoint(splits: Mapping[str, Sequence[Mapping[str, Any]]]) -> d
     return {name: len(part) for name, part in splits.items()}
 
 
+def _split_images(n_images: int, val_fraction: float, test_fraction: float) -> tuple[int, int, int]:
+    """(train, validation, test) image counts that `split_dataset` cuts from `n_images` distinct images."""
+    n_test = max(1, round(n_images * test_fraction))
+    n_val = round(n_images * val_fraction)
+    return n_images - n_test - n_val, n_val, n_test
+
+
+def min_byod_records(*, val_fraction: float = 0.15, test_fraction: float = 0.2) -> dict[str, int]:
+    """The smallest BYOD set `split_dataset` always accepts when every image carries the same number of labelled
+    persons: `MIN_RECORDS` training persons on the training images and (when `val_fraction` > 0) at least one
+    validation image, after at least one test image is held out. With the default fractions that is 12 persons on
+    12 single-person images (split 8 / 2 / 2 images); images with several persons need fewer images."""
+    best: dict[str, int] | None = None
+    for per_image in range(1, MIN_RECORDS + 1):
+        for n in range(2, MAX_RECORDS + 1):
+            train, val, test = _split_images(n, val_fraction, test_fraction)
+            if train >= 1 and train * per_image >= MIN_RECORDS and (val >= 1 or val_fraction == 0):
+                if best is None or n * per_image < best["total"]:
+                    best = {"total": n * per_image, "images": n, "persons_per_image": per_image,
+                            "train_images": train, "validation_images": val, "test_images": test}
+                break
+    if best is None:
+        raise ValueError("no dataset size satisfies these fractions")
+    return best
+
+
 def split_dataset(
     records: Sequence[Mapping[str, Any]], *, val_fraction: float = 0.15, test_fraction: float = 0.2, seed: int = 0
 ) -> dict[str, list[dict[str, Any]]]:
@@ -642,12 +668,29 @@ def split_dataset(
     keys = list(by_image)
     random.Random(seed).shuffle(keys)
     n = len(keys)
-    n_test = max(1, round(n * test_fraction))
-    n_val = round(n * val_fraction)
-    if n - n_test - n_val < 1:
-        raise ValueError(f"{n} distinct images are too few to split into train/validation/test")
+    _n_train, n_val, n_test = _split_images(n, val_fraction, test_fraction)
+    need = min_byod_records(val_fraction=val_fraction, test_fraction=test_fraction)
+    advice = (
+        f"supply at least {need['total']} labelled persons on {need['images']} single-person images "
+        "(or more persons per image, with at least 8 on the training images)"
+    )
+    if n - n_test - n_val < 1 or (val_fraction > 0 and n_val < 1):
+        raise ValueError(f"{n} distinct images are too few to split into train/validation/test — {advice}")
     groups = {"test": keys[:n_test], "validation": keys[n_test : n_test + n_val], "train": keys[n_test + n_val :]}
-    return {name: [r for key in part for r in by_image[key]] for name, part in groups.items()}
+    out = {name: [r for key in part for r in by_image[key]] for name, part in groups.items()}
+    if len(out["train"]) < MIN_RECORDS:
+        raise ValueError(
+            f"the train split holds {len(out['train'])} persons on {len(groups['train'])} image(s); at least "
+            f"{MIN_RECORDS} are required — {advice}"
+        )
+    return out
+
+
+def _box(row: Mapping[str, Any], where: str) -> list[float]:
+    try:
+        return [float(row["x0"]), float(row["y0"]), float(row["x1"]), float(row["y1"])]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(f"{where}: x0, y0, x1 and y1 must be present and numeric") from None
 
 
 def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
@@ -658,12 +701,13 @@ def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
     members: dict[str, bytes] = {}
     if source.is_dir():
         for file in sorted(source.rglob("*")):
-            if file.is_file():
+            if file.is_file() and not any(part == "__MACOSX" or part.startswith(".") for part in file.parts):
                 members[file.name] = file.read_bytes()
     elif zipfile.is_zipfile(source):
         with zipfile.ZipFile(source) as archive:
             for info in archive.infolist():
-                if not info.is_dir():
+                parts = Path(info.filename).parts
+                if not info.is_dir() and not any(part == "__MACOSX" or part.startswith(".") for part in parts):
                     members[Path(info.filename).name] = archive.read(info)  # flattened; no extractall
     else:
         raise ValueError(f"{source} is neither a directory nor a zip file")
@@ -671,27 +715,34 @@ def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
         raise ValueError("BYOD needs a keypoints.csv beside the images")
     images: dict[str, Image.Image] = {}
     out = []
-    for row in csv.DictReader(io.StringIO(members["keypoints.csv"].decode("utf-8-sig"))):
+    rows = list(csv.DictReader(io.StringIO(members["keypoints.csv"].decode("utf-8-sig"))))
+    if not rows:
+        raise ValueError("keypoints.csv has no data rows: add one row per labelled person")
+    for line, row in enumerate(rows, start=2):  # line 1 is the header
         name = str(row.get("file", "")).strip()
+        where = f"keypoints.csv line {line} (file {name!r})"
         if name not in members:
-            raise ValueError(f"keypoints.csv names {name!r}, which is not among the uploaded files")
+            raise ValueError(f"{where}: names an image that is not among the uploaded files")
         if name not in images:
             try:
                 image = Image.open(io.BytesIO(members[name]))
                 image.load()
             except Exception as exc:  # noqa: BLE001
-                raise ValueError(f"BYOD file is not a decodable image: {name}") from exc
+                raise ValueError(f"{where}: the file is not a decodable image") from exc
             images[name] = image.convert("RGB")
         joints = {}
         for joint in KEYPOINT_NAMES:
             sx, sy = str(row.get(f"{joint}_x", "")).strip(), str(row.get(f"{joint}_y", "")).strip()
             if sx and sy:
-                joints[joint] = [float(sx), float(sy)]
+                try:
+                    joints[joint] = [float(sx), float(sy)]
+                except ValueError:
+                    raise ValueError(f"{where}: {joint}_x / {joint}_y must be numbers") from None
         person = str(row.get("person", "0")).strip() or "0"
         record: dict[str, Any] = {
             "id": re.sub(r"[^A-Za-z0-9_.:-]", "_", f"{Path(name).stem}-{person}")[:64],
             "image": images[name],
-            "box": [float(row["x0"]), float(row["y0"]), float(row["x1"]), float(row["y1"])],
+            "box": _box(row, where),
             "keypoints": joints,
             "n_labelled": len(joints),
         }

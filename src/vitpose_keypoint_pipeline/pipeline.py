@@ -530,6 +530,28 @@ class VitPoseKeypointPipeline:
     _processor: Any = field(default=None, repr=False)
     weight_sha256: str | None = None
     adapter: dict[str, Any] | None = None
+    # Pinned-base values of every tensor adapt() or load_artifact() has changed, kept the first time each is about
+    # to change: every adaptation starts from the verified base, never from a previous run (review finding VTP-M3).
+    _base_state: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def _remember_base(self, names: Sequence[str]) -> None:
+        model, _processor = self._require_model()
+        state = model.state_dict()
+        for name in names:
+            if name not in self._base_state:
+                self._base_state[name] = state[name].detach().clone()
+
+    def restore_base(self) -> list[str]:
+        """Put the pipeline back to the pinned base: copy the base values into every tensor an earlier adapt() or
+        load_artifact() changed and drop the adapter record, so `estimate`, `evaluate` and a new adapt() read the
+        untouched checkpoint. Returns the names of the restored tensors."""
+        model, _processor = self._require_model()
+        restored = sorted(self._base_state)
+        if restored:
+            model.load_state_dict({name: self._base_state[name] for name in restored}, strict=False)
+            model.eval()
+        self.adapter = None
+        return restored
 
     @classmethod
     def from_pretrained(
@@ -759,7 +781,9 @@ class VitPoseKeypointPipeline:
         decay), gradient clipping at 1.0, seeded shuffling, no scheduler, no augmentation; the head's BatchNorm statistics
         stay frozen so the adapter is parameters-only. Epoch 0 records the frozen
         model's validation metrics; the epoch with the highest mean of validation PCK and OKS is kept (the final one
-        without a validation split). On any exception the frozen weights are restored. The detector is untouched."""
+        without a validation split). Every call starts from the pinned base: tensors an earlier adapt() or
+        load_artifact() changed are restored first, so epoch 0 is always the frozen model whatever ran before. On any
+        exception the weights and the adapter record this call found are put back. The detector is untouched."""
         model, processor = self._require_model()  # refuse before importing torch
         import numpy as np
         import torch
@@ -779,8 +803,15 @@ class VitPoseKeypointPipeline:
         names = _trainable_names(model, trainable_blocks)
         name_set = set(names)
         device = torch.device(self.device)
-        frozen_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in name_set}
+        # The weights and adapter as this call found them: a failed call puts them back (the transactional
+        # contract), while a successful one starts from the pinned base.
+        previous_state = {
+            k: v.detach().clone() for k, v in model.state_dict().items() if k in name_set or k in self._base_state
+        }
         previous_adapter = self.adapter
+        restored = self.restore_base()
+        self._remember_base(names)
+        frozen_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in name_set}
         cudnn_flags = (torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
         torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark = True, False  # repeatable on one device
         history: list[dict[str, Any]] = []
@@ -856,7 +887,7 @@ class VitPoseKeypointPipeline:
                 param.requires_grad_(False)
             model.eval()
         except BaseException:
-            model.load_state_dict(frozen_state, strict=False)
+            model.load_state_dict(previous_state, strict=False)
             for param in model.parameters():
                 param.requires_grad_(False)
             model.eval()
@@ -876,6 +907,8 @@ class VitPoseKeypointPipeline:
             "loss": f"joint-weighted mean-squared error against Gaussian heatmap targets (sigma {HEATMAP_SIGMA}) in the {heatmap[0]}x{heatmap[1]} heatmap frame",
             "lr": float(lr),
             "seed": seed,
+            "started_from": "pinned base"
+            + (f" (restored {len(restored)} tensors changed by an earlier run)" if restored else ""),
             "n_train": len(train_checked),
             "n_val": len(val_checked) if val_checked is not None else 0,
             "preparation_seconds": prep_seconds,
@@ -940,6 +973,8 @@ class VitPoseKeypointPipeline:
         for name, tensor in tensors.items():
             if tuple(tensor.shape) != tuple(state[name].shape):
                 raise ValueError(f"artifact tensor {name} has shape {tuple(tensor.shape)}, base has {tuple(state[name].shape)}")
+        self.restore_base()
+        self._remember_base(sorted(tensors))
         model.load_state_dict({k: v.to(state[k].device, state[k].dtype) for k, v in tensors.items()}, strict=False)
         model.eval()
         self.adapter = {**manifest["adapter"], "trainable_names": expected, "history": manifest.get("history", [])}
