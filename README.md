@@ -82,7 +82,7 @@ The default path runs on CPU and uses CUDA automatically when present (about two
 
 ## Release status
 
-**Release-grade** — the `E2E` notebook blob `050796f8` (committed at `29c1dde`) executed top-to-bottom in a clean Kaggle Tesla T4 runtime on 2026-09-20 (11/11 ok (1 restart after install cell), 374.6 s); the record is in `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but were never the evidence; the hosted run is. A later change to the carried modules or the notebook returns the status to Candidate until re-verified.
+**Candidate** — The 2026-09-20 Kaggle T4 run of `29c1dde` / blob `050796f8` needed a manual restart after the install cell, so it is not a one-pass `Run all` and not promotion evidence. The 2026-10-05 review-fix blob `49fc2c05a6dd` (commit `bbd073c`) completed one pass with no restart and 0 errors on a fresh Colab Tesla T4 on 2026-10-09 (Colab CLI sequential execution, 13/13 code cells, 319.8 s; isolated `uv` environment, 48 locked packages including scipy for the ViTPose processor; small-person PCK frozen 0.598 / adapted 0.718, OKS 0.564 / 0.681, clean PCK 0.957 / 0.959, clean OKS 0.94 / 0.93; reload parity 8/8); the REL12 BYOD journeys are not exercised yet. The record is in `docs/release-verification.md` and `STATUS.md`.
 
 ## Documentation
 
