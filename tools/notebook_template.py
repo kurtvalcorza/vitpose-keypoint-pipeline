@@ -764,6 +764,6 @@ TEMPLATE = {
         "- ViTPose: Simple Vision Transformer Baselines for Human Pose Estimation (Xu, Zhang, Zhang, Tao, NeurIPS 2022): https://arxiv.org/abs/2204.12484\n"
         "- RT-DETR (Zhao et al., CVPR 2024): https://arxiv.org/abs/2304.08069\n"
         "- Microsoft COCO: Common Objects in Context (Lin et al., ECCV 2014; keypoint annotations CC BY 4.0, photographs under their Flickr licences): https://cocodataset.org/#termsofuse\n"
-        "- DIMER Notebook Specification 2.0 and Model Card Specification 1.1 (fleet specs in the ml-worker repository)"
+        "- DIMER Notebook Specification 2.2 and Model Card Specification 1.1 (fleet specs in the ml-worker repository)"
     ),
 }

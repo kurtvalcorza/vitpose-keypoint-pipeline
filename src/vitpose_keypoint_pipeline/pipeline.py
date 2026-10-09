@@ -546,7 +546,11 @@ class VitPoseKeypointPipeline:
         load_artifact() changed and drop the adapter record, so `estimate`, `evaluate` and a new adapt() read the
         untouched checkpoint. Returns the names of the restored tensors."""
         model, _processor = self._require_model()
-        restored = sorted(self._base_state)
+        state = model.state_dict()
+        # Only tensors whose live value differs from the base count as restored (as t5-base-text2text
+        # 93a578f), so a repeat restore, or an adapt after one, does not claim an earlier run changed
+        # anything.
+        restored = sorted(n for n, base in self._base_state.items() if not bool((state[n] == base).all()))
         if restored:
             model.load_state_dict({name: self._base_state[name] for name in restored}, strict=False)
             model.eval()

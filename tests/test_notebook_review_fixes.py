@@ -74,6 +74,23 @@ def test_vtp_m1_carried_lock_is_the_committed_lock_and_pins_every_runtime_pin(no
     build.check_lock(build._pins(ROOT), lock_text)
 
 
+def test_vtp_s_declares_notebook_spec_2_2(notebook):
+    assert notebook["metadata"]["dimer"]["notebook_spec"] == "2.2"
+
+
+def test_vtp_m1_routed_cells_do_not_import_ipython(notebook):
+    """Every cell after Section 1 runs in the isolated environment, which has no IPython; the worker injects `display`."""
+    routed = [c["source"] for c in _code_cells(notebook) if "# dimer: kernel cell" not in c["source"]]
+    assert routed and not [s for s in routed if re.search(r"^\s*(from|import) IPython", s, re.M)]
+
+
+def test_vtp_m1_lock_carries_scipy_for_the_vitpose_processor():
+    """VitPoseImageProcessor imports scipy (inv, affine_transform, gaussian_filter) only when it is installed and calls
+    it unconditionally in preprocess/post-processing, so a lock without scipy fails with NameError in the isolated env."""
+    assert re.search(r"^scipy==\S+ \\$", LOCK.read_text(encoding="utf-8"), re.M)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="the worker protocol uses Linux pass_fds (as in rtdetr-detection-pipeline 0feefe5)")
 def test_vtp_m1_section_1_is_idempotent_and_keeps_the_live_worker(notebook, tmp_path, monkeypatch, capsys):
     """The real Section 1 cell, run twice with a stand-in interpreter: the matching environment is reused (no
     download) and the live worker — with every variable later cells created — is kept."""
@@ -140,6 +157,9 @@ class _Tensor:
     def clone(self):
         return _Tensor(self.value.copy())
 
+    def __eq__(self, other):
+        return self.value == other.value
+
 
 class _Model:
     def __init__(self):
@@ -172,6 +192,11 @@ def test_vtp_m3_restore_base_makes_a_head_only_rerun_start_from_base_blocks_stan
     assert pipe.restore_base() == ["backbone.encoder.layer.11.w", "head.conv.w"]  # what a head-only adapt() does first
     assert model.state["backbone.encoder.layer.11.w"].value.tolist() == [1.0, 2.0] and model.state["head.conv.w"].value.tolist() == [3.0]
     assert model.state["backbone.embeddings.w"].value.tolist() == [4.0] and pipe.adapter is None
+    # A repeat restore (or the restore at the start of the next adapt) changes nothing, so it reports nothing:
+    # the count is of tensors that differed from the base, not of every remembered name (t5-base 93a578f).
+    assert pipe.restore_base() == []
+    model.state["head.conv.w"] = _Tensor([7.0])
+    assert pipe.restore_base() == ["head.conv.w"]
 
 
 def test_vtp_m3_byod_rerun_restores_the_base_and_the_experiment_has_its_own_pipeline(notebook):
