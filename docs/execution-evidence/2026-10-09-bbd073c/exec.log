@@ -1,0 +1,68 @@
+[colab] Parsing notebook '/home/kurt/colab-runs/vitpose-keypoint-pipeline-bbd073c-6f6512/vitpose_keypoint_colab_bbd073c_colab-cli-t4.ipynb'...
+[colab] Executing cell 1/13 - Infrastructure: build (or reuse) the isolated environment and route later cells to it...
+{'isolated_environment': '/content/dimer_isolated_env_82f7302e59ff', 'reused': False, 'isolated_python': '3.12.12', 'kernel_python': '3.13.15', 'locked_packages': 48, 'setup_seconds': 69}
+{'routed_to': '/content/dimer_isolated_env_82f7302e59ff/bin/python', 'worker_pid': 3154, 'worker_reused': False}
+[colab] Executing cell 2/13 - Infrastructure: record the runtime...
+{'notebook_source': {'repository': 'vitpose-keypoint-pipeline', 'repository_revision': 'e98384143a7a28255ed0227dd970f94aa81c6acd', 'embedded_module': 'src/vitpose_keypoint_pipeline/pipeline.py', 'embedded_modules': ['src/vitpose_keypoint_pipeline/pipeline.py', 'src/vitpose_keypoint_pipeline/metrics.py', 'src/vitpose_keypoint_pipeline/samples.py'], 'module_sha256': '7f6b81e1e294e4a4dfb98036332bb72aa3899e53d24dae35a27741a7c3baa636', 'generator': 'build_notebook.py/2.2', 'notebook_spec': '2.2'}, 'python': '3.12.12', 'executable': '/content/dimer_isolated_env_82f7302e59ff/bin/python', 'torch': '2.14.0+cu130', 'transformers': '4.57.6', 'cuda': True}
+[colab] Executing cell 3/13 - vitpose_keypoint-08...
+[colab] Executing cell 4/13 - vitpose_keypoint-10...
+[colab] Executing cell 5/13 - vitpose_keypoint-12...
+[colab] Executing cell 6/13 - Infrastructure: stage and digest-verify the pinned snapshot, then load the model...
+{'model_id': 'usyd-community/vitpose-base', 'revision': '95be2991424e646950d656bb7fc15ec9be119700', 'license': 'apache-2.0', 'files': 4, 'total_bytes': 360020483}
+{'weights_dir': '/content/weights/vitpose-base', 'fetched': ['README.md', 'config.json', 'model.safetensors', 'preprocessor_config.json']}
+{'verified_files': 4, 'revision': '95be2991424e646950d656bb7fc15ec9be119700'}
+{'weights_dir': '/content/weights/rtdetr-r50vd', 'fetched': ['README.md', 'config.json', 'model.safetensors', 'preprocessor_config.json']}
+{'verified_files_rtdetr_r50vd': 4}
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+{'device': 'cuda:0', 'source': 'local-snapshot'}
+[colab] Executing cell 7/13 - vitpose_keypoint-16...
+{'data_source': 'COCO 2017 validation persons (Flickr CC BY 2.0 / CC BY-SA 2.0 photographs; keypoint annotations CC BY 4.0): COCO 2017 (annotations_trainval2017 person_keypoints_val2017.json; images val2017)', 'raw_rows': {'photographs': 300, 'bytes': 52141813, 'persons': 498, 'seconds': 121.8}, 'splits': {'train': 290, 'validation': 72, 'test': 136}, 'degradation': {'target_height_px': 40, 'jpeg_quality': 30}, 'licence': "photographs: each record's Flickr licence (CC BY 2.0 or CC BY-SA 2.0, ids 4 and 5 of the COCO licence table); annotations: CC BY 4.0 (COCO Consortium)"}
+{'train': {'n': 290, 'images': 288, 'category_counts': {'full': 90, 'partial': 93, 'sparse': 107}, 'box_height': {'min': 39.6, 'max': 40.5}, 'labelled_joints': {'min': 12, 'max': 17}, 'digest': '319541ce1215953a...'}}
+{'validation': {'n': 72, 'images': 69, 'category_counts': {'full': 20, 'partial': 22, 'sparse': 30}, 'box_height': {'min': 39.6, 'max': 40.4}, 'labelled_joints': {'min': 12, 'max': 17}, 'digest': 'f2f0cacf783fd883...'}}
+{'test': {'n': 136, 'images': 134, 'category_counts': {'full': 38, 'partial': 47, 'sparse': 51}, 'box_height': {'min': 39.6, 'max': 40.4}, 'labelled_joints': {'min': 12, 'max': 17}, 'digest': '2b67e9dd4b58e826...'}}
+{'example': {'id': 'coco-785-442619', 'category': 'full', 'image': [74, 49], 'box': [32.5, 5.2, 57.8, 45.1], 'labelled': 17, 'scale': 0.11538017768547364, 'flickr': 'http://farm8.staticflickr.com/7015/6795644157_f019453ae7_z.jpg', 'licence': 'Attribution License'}}
+{'probe': 'duplicate id', 'rejected': "duplicate id 'same'"}
+{'probe': 'joint outside its image', 'rejected': 'records[0]: keypoint Nose (-5.0, 0.0) lies outside the 74x49 image'}
+{'probe': 'too few labelled joints', 'rejected': 'records[0]: 5 labelled joints, MIN_LABELLED is 12'}
+{'probe': 'too small', 'rejected': '3 records; 8..5000 are required'}
+[colab] Executing cell 8/13 - vitpose_keypoint-19...
+{'ceilings': {'MIN_IMAGE_SIDE': 16, 'MAX_IMAGE_SIDE': 4096, 'MAX_PERSONS': 50, 'DETECTION_THRESHOLD': 0.3, 'KEYPOINT_THRESHOLD': 0.3, 'PCK_FRACTION': 0.1, 'MIN_LABELLED': 12, 'MIN_RECORDS': 8, 'MAX_RECORDS': 5000, 'device': 'cuda:0'}}
+{'scene': 'synthetic_person_640x640.png', 'sha256': 'b4d22c331cfd5b21...', 'manifest_verdict': 'accepted', 'findings': 1, 'stage1_persons': 0, 'scene_findings': ['stage 1 found no `person` on the drawing at the default threshold; stage 2 receives the drawn box as a caller box']}
+{'frozen': {'seconds': 0.074, 'checks': {'one_person': True, 'seventeen_joints_in_order': True, 'identity_reported': True}, 'mean_score': 0.93, 'pck': 1.0, 'mean_error_px': 12.8, 'verdict': 'sample-sanity'}}
+[colab] Executing cell 9/13 - vitpose_keypoint-22...
+{'box_centre_baseline': {'pck': 0.086, 'oks': 0.165}, 'n': 136, 'note': 'every joint at the box centre'}
+{'mean_pose_baseline': {'pck': 0.472, 'oks': 0.44}, 'note': "every joint at the training split's mean position relative to the box"}
+{'frozen_small_persons': {'pck': 0.598, 'oks': 0.564}, 'n': 136, 'verdict': 'measured', 'seconds': 3.0}
+{'frozen_clean_counterparts': {'pck': 0.957, 'oks': 0.94}}
+{'definitions': {'pck': "share of labelled joints whose prediction lies within PCK_FRACTION (0.1) of the person box's longest side of the reference; in 0..1, higher is better", 'oks': 'mean over labelled joints of exp(-d^2 / (2 * area * (2 * sigma_joint)^2)) with the COCO keypoint sigmas and the box area — the COCO OKS kernel per joint; in 0..1, higher is better'}}
+{'by_category_frozen': {'full': {'n': 38, 'pck': 0.604, 'oks': 0.579}, 'partial': {'n': 47, 'pck': 0.627, 'oks': 0.569}, 'sparse': {'n': 51, 'pck': 0.568, 'oks': 0.549}}}
+{'frozen_vs_floor': 'frozen above the box-centre floor'}
+[colab] Executing cell 10/13 - vitpose_keypoint-25...
+{'epoch': 0, 'train_loss': None, 'val_pck': 0.663, 'val_oks': 0.627, 'val_score': 0.645, 'note': 'frozen model'}
+{'epoch': 1, 'train_loss': 0.0028, 'val_pck': 0.71, 'val_oks': 0.667, 'val_score': 0.688}
+{'epoch': 2, 'train_loss': 0.00243, 'val_pck': 0.723, 'val_oks': 0.676, 'val_score': 0.7}
+{'epoch': 3, 'train_loss': 0.00222, 'val_pck': 0.732, 'val_oks': 0.69, 'val_score': 0.711}
+{'epoch': 4, 'train_loss': 0.00203, 'val_pck': 0.735, 'val_oks': 0.696, 'val_score': 0.715}
+{'epoch': 5, 'train_loss': 0.00183, 'val_pck': 0.732, 'val_oks': 0.7, 'val_score': 0.716}
+{'epoch': 6, 'train_loss': 0.00164, 'val_pck': 0.744, 'val_oks': 0.7, 'val_score': 0.722}
+{'epoch': 7, 'train_loss': 0.00144, 'val_pck': 0.742, 'val_oks': 0.702, 'val_score': 0.722}
+{'epoch': 8, 'train_loss': 0.00125, 'val_pck': 0.743, 'val_oks': 0.702, 'val_score': 0.723}
+{'trainable_parameters': 18376977, 'total_parameters': 89994513, 'preparation_seconds': 3.554, 'best_epoch': 8, 'selection': 'highest mean of validation PCK and OKS', 'loss': 'joint-weighted mean-squared error against Gaussian heatmap targets (sigma 2.0) in the 64x48 heatmap frame', 'started_from': 'pinned base', 'seconds': 62.8}
+[colab] Executing cell 11/13 - vitpose_keypoint-28...
+{'pck': {'box_centre': 0.086, 'mean_pose': 0.472, 'frozen': 0.598, 'adapted': 0.718, 'frozen_clean': 0.957, 'adapted_clean': 0.959}}
+{'oks': {'box_centre': 0.165, 'mean_pose': 0.44, 'frozen': 0.564, 'adapted': 0.681, 'frozen_clean': 0.94, 'adapted_clean': 0.93}}
+{'delta_vs_frozen': {'pck': 0.119, 'oks': 0.117}}
+{'verdicts': {'frozen_vs_floor': 'frozen above the box-centre floor', 'adapted_vs_frozen_pck': 'improved', 'adapted_vs_frozen_oks': 'improved', 'adapted_above_mean_pose_pck': True, 'clean_pck': 'improved', 'clean_oks': 'worse'}}
+{'delta_vs_mean_pose': {'pck': 0.245, 'oks': 0.241}}
+{'by_category': {'full': {'n': 38, 'frozen_pck': 0.604, 'adapted_pck': 0.795, 'frozen_oks': 0.579, 'adapted_oks': 0.721}, 'partial': {'n': 47, 'frozen_pck': 0.627, 'adapted_pck': 0.703, 'frozen_oks': 0.569, 'adapted_oks': 0.677}, 'sparse': {'n': 51, 'frozen_pck': 0.568, 'adapted_pck': 0.673, 'frozen_oks': 0.549, 'adapted_oks': 0.655}}}
+{'verdicts': {'frozen_vs_floor': 'frozen above the box-centre floor', 'adapted_vs_frozen_pck': 'improved', 'adapted_vs_frozen_oks': 'improved', 'adapted_above_mean_pose_pck': True, 'clean_pck': 'improved', 'clean_oks': 'worse'}}
+{'report': 'outputs/vitpose_keypoint_evaluation_report.json', 'adapted_beats_mean_pose': True}
+[colab] Executing cell 12/13 - vitpose_keypoint-31...
+{'adapted': {'seconds': 0.027, 'checks': {'one_person': True, 'seventeen_joints_in_order': True, 'identity_reported': True}, 'mean_score': 0.963, 'pck': 1.0, 'mean_error_px': 11.5, 'verdict': 'sample-sanity'}}
+{'examples': ['coco-1000-1234574_full.png', 'coco-1000-1259139_full.png', 'coco-1000-1269164_full.png', 'coco-1000-1303041_sparse.png'], 'panel_order': ['frozen skeleton', 'adapted skeleton', 'labelled joints'], 'zoom': 4}
+{'artifact': 'outputs/vitpose_keypoint_adapter', 'format': 'org.valcorza.vitpose-base.adapter.v1', 'tensors': 42, 'bytes': 73512628, 'sha256': '5baace2ce609cbc7...'}
+{'reload_parity': {'identical_persons': 8, 'of': 8, 'max_abs_difference_px': 7.62939453125e-06}, 'reloaded_best_epoch': 8}
+['vitpose_keypoint_adapter', 'vitpose_keypoint_evaluation_report.json', 'vitpose_keypoint_examples', 'vitpose_keypoint_input_manifest.json', 'vitpose_keypoint_result.json', 'vitpose_keypoint_scene_adapted.png', 'vitpose_keypoint_scene_frozen.png', 'vitpose_keypoint_train.csv']
+[colab] Executing cell 13/13 - vitpose_keypoint-34...
+{'experiment': 'skipped (RUN_EXPERIMENT = False); the default path above is complete'}
+[colab] Saving notebook with outputs to '/home/kurt/colab-runs/vitpose-keypoint-pipeline-bbd073c-6f6512/vitpose_keypoint_colab_bbd073c_colab-cli-t4_output.ipynb'...
