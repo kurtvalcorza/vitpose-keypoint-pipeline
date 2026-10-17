@@ -123,3 +123,25 @@ def test_st1_primary_path_has_no_repository_dependency(notebook: dict) -> None:
     assert f"from {TEMPLATE['package']}" not in code
     # own-repository clone/install (ST1); SHA-pinned upstream git dependencies are allowed
     assert "github.com/kurtvalcorza" not in code
+
+
+def test_stamped_revision_contains_the_carried_modules(notebook):
+    """Peer-review m5: `generated_from.revision` must name a commit whose package sources are the carried ones (the
+    notebook is regenerated in a commit after the code commit). Skips when that commit is not in the checkout (CI's
+    shallow clone)."""
+    import hashlib
+    import subprocess
+
+    meta = notebook["metadata"]["dimer"]["generated_from"]
+    revision = meta["revision"]
+    try:
+        present = subprocess.run(["git", "cat-file", "-e", f"{revision}^{{commit}}"], cwd=ROOT, capture_output=True).returncode == 0
+    except OSError:
+        present = False
+    if not present:
+        pytest.skip(f"stamped revision {revision} not in this checkout")
+    text = "".join(
+        subprocess.run(["git", "show", f"{revision}:{rel}"], cwd=ROOT, capture_output=True, check=True).stdout.decode("utf-8")
+        for rel in meta["modules"]
+    )
+    assert hashlib.sha256(text.encode("utf-8")).hexdigest() == meta["module_sha256"], f"carried modules differ from {revision}"

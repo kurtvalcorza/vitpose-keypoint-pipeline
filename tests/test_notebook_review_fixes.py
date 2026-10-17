@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from vitpose_keypoint_pipeline import paired_bootstrap
 from vitpose_keypoint_pipeline import samples as sm
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,8 +75,9 @@ def test_vtp_m1_carried_lock_is_the_committed_lock_and_pins_every_runtime_pin(no
     build.check_lock(build._pins(ROOT), lock_text)
 
 
-def test_vtp_s_declares_notebook_spec_2_2(notebook):
-    assert notebook["metadata"]["dimer"]["notebook_spec"] == "2.2"
+def test_vtp_m5_declares_notebook_spec_2_5_and_its_kind(notebook):
+    assert notebook["metadata"]["dimer"]["notebook_spec"] == "2.5"
+    assert notebook["metadata"]["dimer"]["notebook_kind"] == "TUTORIAL"
 
 
 def test_vtp_m1_routed_cells_do_not_import_ipython(notebook):
@@ -204,7 +206,7 @@ def test_vtp_m3_byod_rerun_restores_the_base_and_the_experiment_has_its_own_pipe
     assert section_4.index("restored_tensors = pipe.restore_base()") < section_4.index("if USE_BYOD:")
     experiment = _cell(notebook, "RUN_EXPERIMENT = False")
     assert "experiment_pipe = VitPoseKeypointPipeline.from_pretrained(weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)" in experiment
-    assert "EXPERIMENT_TRAINABLE_BLOCKS = 0" in experiment and "experiment_parity" in experiment
+    assert "EXPERIMENT_TRAINABLE_BLOCKS = 1" in experiment and "experiment_parity" in experiment
     assert f"Path('outputs/{STEM}_experiment')" in experiment
     assert "raise RuntimeError(f'the experiment changed a default export: {unchanged}')" in experiment
     assert not re.search(r"(?<!experiment_)pipe\.adapt\(", experiment)
@@ -218,11 +220,12 @@ def test_vtp_m3_byod_rerun_restores_the_base_and_the_experiment_has_its_own_pipe
 def test_vtp_m2_no_quality_assert_remains(notebook):
     code = "\n".join(c["source"] for c in _code_cells(notebook) if not c["metadata"].get("dimer", {}).get("embedded_module"))
     asserts = re.findall(r"(?m)^\s*assert .*$", code)
-    assert asserts == ["assert parity['identical_persons'] == parity['of']"]
+    assert [a.strip() for a in asserts] == ["assert parity['identical_persons'] == parity['of']"]
 
 
 def _m(pck, oks):
-    return {"pck": pck, "oks": oks, "n": 4, "verdict": "measured-small-sample", "definitions": {}, "per_category": {"full": {"n": 4, "pck": pck, "oks": oks}}, "baseline": "stand-in"}
+    return {"pck": pck, "oks": oks, "n": 4, "verdict": "measured-small-sample", "definitions": {}, "per_category": {"full": {"n": 4, "pck": pck, "oks": oks}}, "baseline": "stand-in",
+            "per_record": [{"id": "p1", "pck": pck, "oks": oks}]}
 
 
 def test_vtp_m2_a_run_without_a_gain_is_recorded_and_does_not_stop_the_notebook(notebook, tmp_path, monkeypatch):
@@ -230,24 +233,29 @@ def test_vtp_m2_a_run_without_a_gain_is_recorded_and_does_not_stop_the_notebook(
     both cells complete and record `no gain` (stand-in evidence, no model)."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir()
-    scores = iter([_m(0.6, 0.56), _m(0.957, 0.94), _m(0.6, 0.56), _m(0.6, 0.56), _m(0.959, 0.93)])
+    scores = iter([_m(0.6, 0.56), _m(0.957, 0.94), _m(0.6, 0.56), _m(0.6, 0.56), _m(0.959, 0.92)])
 
     class StandIn:
         def evaluate(self, records):
             return next(scores)
 
     ns = {
-        "pipe": StandIn(), "train_records": [], "val_records": [], "test_records": [], "clean_test": [], "time": __import__("time"), "json": json,
+        "pipe": StandIn(), "train_records": [], "val_records": [], "test_records": [{"id": "p1", "image_id": 1}], "clean_test": [], "time": __import__("time"), "json": json,
+        "dev_test_records": None, "clean_dev": None, "RECIPE_MARGIN": 0.01, "paired_bootstrap": paired_bootstrap, "image_digest": lambda image: "d",
         "box_centre_baseline": lambda r: _m(0.086, 0.165), "mean_pose_baseline": lambda a, b: _m(0.472, 0.44),
         "MODEL_ID": "stand-in", "MODEL_REVISION": "0" * 40, "MODEL_KEY": "stand-in", "data_source": "stand-in", "dataset_manifests": {"test": {"digest": "d"}},
         "TARGET_HEIGHT": 40, "JPEG_QUALITY": 30, "disjoint": {}, "adapt_result": {"history": [], "trainable_names": []}, "adapt_seconds": 0.0,
+        "held_out_name": "fresh test", "held_out_records": [{"id": "p1", "image_id": 1}], "held_out_clean": [], "RUN_SETTINGS": dict(sm.PREREGISTERED_SETTINGS),
+        "preregistration": sm.check_preregistration(dict(sm.PREREGISTERED_SETTINGS)), "plan_test_look": sm.plan_test_look, "Path": Path,
+        "recipe_selection": {"chosen": "G2", "settings": dict(sm.PREREGISTERED_SETTINGS), "preregistration": sm.check_preregistration(dict(sm.PREREGISTERED_SETTINGS))},
     }
     exec(_cell(notebook, "baseline_centre = box_centre_baseline("), ns)
     assert ns["frozen_verdict"] == "frozen above the box-centre floor"
-    exec(_cell(notebook, "adapted_test = pipe.evaluate(test_records)"), ns)
+    exec(_cell(notebook, "adapted_val = pipe.evaluate(val_records)"), ns)
     verdicts = json.loads((tmp_path / "outputs" / f"{STEM}_evaluation_report.json").read_text(encoding="utf-8"))["comparison"]["verdicts"]
-    assert verdicts["adapted_vs_frozen_pck"] == "no gain" and verdicts["adapted_vs_frozen_oks"] == "no gain"
-    assert verdicts["clean_pck"] == "improved" and verdicts["clean_oks"] == "worse"
+    # Verdicts use the stated 0.01 tolerance (review m2): +0.002 clean PCK is no measurable change, -0.02 OKS is worse.
+    assert verdicts["adapted_vs_frozen_pck"] == "no measurable change" and verdicts["adapted_vs_frozen_oks"] == "no measurable change"
+    assert verdicts["clean_pck"] == "no measurable change" and verdicts["clean_oks"] == "worse"
 
 
 # --- VTP-M4: guided layer and infrastructure labelling ----------------------------------------------------------
@@ -357,16 +365,31 @@ def test_vtp_m1_byod_path_runs_section_4_outside_colab_from_the_base(notebook, t
     assert restored == [True], "a BYOD re-run must put the model back to the pinned base first"
     assert ns["raw_rows"] == {"byod": 14, "effective_minimum": 12}
     assert "held-out test persons" in out
+    # Score-once rule: a BYOD run is exploratory, so its held-out rows are validation and the fresh test is never scored.
+    assert ns["preregistration"]["preregistered"] is False and {"data_source", "byod"} <= set(ns["preregistration"]["settings_differing"])
+    assert ns["held_out_records"] is ns["val_records"]
     assert (tmp_path / "outputs" / f"{STEM}_train.csv").is_file()
 
 
 def test_vtp_m1_upload_outside_colab_cancelled_and_bad_path_are_explained(notebook, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setitem(sys.modules, "google", None)
-    with pytest.raises(RuntimeError, match="upload dialog exists only in Google Colab"):
+    with pytest.raises(ValueError, match="upload dialog exists only in Google Colab") as refused:
         exec(_section_4(notebook, ""), _section_4_namespace([]))
-    with pytest.raises(FileNotFoundError, match="BYOD_PATH 'nowhere.zip' does not exist"):
+    assert refused.value.dimer_refusal and refused.value._render_traceback_() == [str(refused.value)]
+    with pytest.raises(ValueError, match="BYOD_PATH 'nowhere.zip' does not exist"):
         exec(_section_4(notebook, "nowhere.zip"), _section_4_namespace([]))
+    # A malformed upload is refused in one message and invalidates the active run, but leaves earlier outputs alone.
+    (tmp_path / "bad.zip").write_bytes(b"not a zip")
+    (tmp_path / "outputs").mkdir(exist_ok=True)
+    (tmp_path / "outputs" / "earlier.json").write_text("{}", encoding="utf-8")
+    ns = _section_4_namespace([])
+    ns.update({"train_records": ["stale"], "test_records": ["stale"], "adapt_result": {"stale": True}})
+    with pytest.raises(ValueError, match=r"BYOD refused \(bad.zip\)") as refused:
+        exec(_section_4(notebook, "bad.zip"), ns)
+    assert refused.value.dimer_refusal and refused.value.__cause__ is None
+    assert not {"train_records", "test_records", "adapt_result"} & set(ns)
+    assert (tmp_path / "outputs" / "earlier.json").is_file()
     for uploaded, message in (({}, "received 0"), ({"a.zip": b"", "b.zip": b""}, "received 2")):
         google, colab, files = (types.ModuleType(n) for n in ("google", "google.colab", "google.colab.files"))
         files.upload = lambda uploaded=uploaded: uploaded
@@ -384,6 +407,33 @@ def test_vtp_m2_prose_names_its_runs_and_reads_clean_oks(notebook):
     markdown = _markdown(notebook)
     for stale in ("the adaptation did not cost the resolution the checkpoint was built for", "without costing the clean input"):
         assert stale not in markdown, stale
-    assert "Kaggle T4 release run" in markdown and "0.94 to 0.93" in markdown and "0.718" in markdown
+    # Row-110 review (VTP-M5, VTP-m4): the clean-OKS "cost" was a geometry artifact; quotes name their run.
+    assert "a small but real cost that PCK alone hides" not in markdown
+    assert "Kaggle T4 release run" not in markdown and "build record" not in markdown and "build workstation" not in markdown
+    assert "base 8934a7d9" in markdown and "## What did not work" in markdown
     access = next(line for line in markdown.splitlines() if line.startswith("- **External access:**"))
     assert "images.cocodataset.org" in access and "SHA-256" in access
+
+
+# --- Row-110 review (2026-10-17): VTP-M6 pre-registration, VTP-m3 DAT9 ------------------------------------------
+
+
+def test_vtp_m6_preregistration_precedes_every_score_and_test_is_scored_only_when_preregistered(notebook):
+    cells = notebook["cells"]
+    text = ["".join(c["source"]) if isinstance(c["source"], list) else c["source"] for c in cells]
+    prereg = next(i for i, t in enumerate(text) if "**Pre-registered recipe (fixed before any grid score was read).**" in t)
+    first_score = next(i for i, t in enumerate(text) if cells[i]["cell_type"] == "code" and "frozen_test = pipe.evaluate(held_out_records)" in t)
+    assert prereg < first_score
+    markdown = _markdown(notebook)
+    assert "are why the default is" not in markdown
+    grid_cell = next(t for t in text if "recipe_selection = select_recipe(grid_rows, frozen_val_score)" in t)
+    assert "RUN_RECIPE_GRID = True" in _cell(notebook, "USE_BYOD = False") and "evaluate(test_records)" not in grid_cell and "evaluate(held_out_records)" not in grid_cell
+    code = "\n".join(t for c, t in zip(cells, text, strict=True) if c["cell_type"] == "code")
+    # frozen (Section 6) and the chosen configuration (Section 8), on the fresh test only under the pre-registered settings;
+    # Section 10's experiment is exploratory and reads validation only.
+    assert len(re.findall(r"(?<![\w])pipe\.evaluate\(held_out_records\)", code)) == 2 and "evaluate(test_records)" not in code
+
+
+def test_vtp_m3_states_the_val2017_overlap(notebook):
+    markdown = _markdown(notebook)
+    assert "train2017" in markdown and "save_best='AP'" in markdown and "mildly optimistic" in markdown

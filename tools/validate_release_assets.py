@@ -46,7 +46,9 @@ EXPECTED_OUTPUTS = (
 # Profile-specific code the notebook must exercise through the carried package's public API.
 CODE_MARKERS = (
     "corpus_files = fetch_corpus(cache_dir='weights/coco-val-persons')",
-    "corpus = read_corpus(corpus_files)",
+    "corpus = read_corpus(corpus_files, target_height=TARGET_HEIGHT, quality=JPEG_QUALITY)",
+    # Fresh-test score-once rule (2026-10-17): every pre-registered setting gates the fresh test
+    "preregistration = check_preregistration(RUN_SETTINGS)",
     "splits = build_sample_dataset(corpus, seed=SPLIT_SEED)",
     "clean_test = read_corpus({k: v for k, v in corpus_files.items() if k in test_images}, target_height=None)",
     "records = load_byod_dataset(byod_zip)",
@@ -66,22 +68,25 @@ CODE_MARKERS = (
     "result = pipeline.estimate(scene, person_boxes=[DRAWN_BOX], detection_threshold=DETECTION_THRESHOLD, keypoint_threshold=KEYPOINT_THRESHOLD)",
     "'seventeen_joints_in_order': [kp['name'] for kp in pose['all_keypoints']] == list(KEYPOINT_NAMES)",
     "report = evaluation_report(result, [scene_reference], sample_kind=",
-    "baseline_centre = box_centre_baseline(test_records)",
-    "baseline_prior = mean_pose_baseline(train_records, test_records)",
-    "frozen_test = pipe.evaluate(test_records)",
-    "frozen_clean = pipe.evaluate(clean_test) if clean_test is not None else None",
+    "baseline_centre = box_centre_baseline(held_out_records)",
+    "baseline_prior = mean_pose_baseline(train_records, held_out_records)",
+    "frozen_test = pipe.evaluate(held_out_records)",
+    "frozen_clean = pipe.evaluate(held_out_clean) if held_out_clean is not None else None",
     "frozen_verdict = ",
-    "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=TRAINABLE_BLOCKS, progress=report)",
-    "adapted_test = pipe.evaluate(test_records)",
+    "result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=blocks, seed=ADAPT_SEED, progress=report)",
+    "recipe_selection = select_recipe(grid_rows, frozen_val_score)",
+    "test_look = plan_test_look(run_check, 'outputs', 'vitpose_keypoint')",
+    "adapted_test = frozen_test if adapt_result is None else pipe.evaluate(held_out_records)",
     "adapted_val = pipe.evaluate(val_records)",
     "comparison['verdicts'] = ",
     "adapted_scene_result, adapted_scene = estimate_scene(pipe, 'adapted')",
     "frozen_base = VitPoseKeypointPipeline.from_pretrained(weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
-    "pipe.save_artifact(artifact_dir, metadata={'tutorial': 'vitpose_keypoint', 'data_source': data_source})",
+    "pipe.save_artifact(artifact_dir, metadata={'tutorial': 'vitpose_keypoint', 'data_source': data_source, 'recipe': recipe_selection['chosen']})",
     "reloaded = VitPoseKeypointPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
     "assert parity['identical_persons'] == parity['of']",
     # Section 10 (optional, off by default): its own pipeline, default exports checked unchanged (VTP-M3)
     "RUN_EXPERIMENT = False",
+    "experiment_val = experiment_pipe.evaluate(val_records)",
     "experiment_pipe = VitPoseKeypointPipeline.from_pretrained(weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
     "raise RuntimeError(f'the experiment changed a default export: {unchanged}')",
     "'model_revision': MODEL_REVISION",
@@ -107,8 +112,8 @@ MARKDOWN_MARKERS = (
     "**adaptation with labelled persons**",
     "**distant, low-quality person**",
     "**40 px tall**",
-    "**0.957**",
-    "**0.598**",
+    "**0.977**",
+    "**0.613**",
     "**box-only baselines**",
     "**PCK**",
     "**mean OKS**",
@@ -116,14 +121,14 @@ MARKDOWN_MARKERS = (
     "**mean-pose**",
     "**joint-weighted mean-squared error**",
     "**mean of validation PCK and OKS**",
-    "**no dispersion estimate**",
+    "**no seed-to-seed dispersion estimate**",
     "**Snapshot note:**",
     "finds **no** `person` at the default 0.3",
     "bottom-up or multi-person association without boxes",
     "## 4. COCO persons, the small-person degradation and the split",
     "## 5. Estimate a synthetic drawing through the two-stage inference contract",
     "## 6. Baselines, the frozen model on the small persons — and on the clean ones",
-    "## 7. Bounded fine-tuning of the heatmap head and the last encoder blocks",
+    "## 7. Bounded fine-tuning: the pre-registered recipe grid",
     "## 8. Held-out evaluation",
     "## 9. Look at the skeletons, export the adapter and reload it",
     "**Degradation:**",
@@ -163,7 +168,7 @@ INSTALL_CELL_MARKER = "# dimer: kernel cell"
 # Specification 2.0; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SPEC = "2.2"
+NOTEBOOK_SPEC = "2.5"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
@@ -238,7 +243,7 @@ COMMON_MARKDOWN_MARKERS = (
     "without the repository being",
     "It does **not** establish benchmark superiority",
     "## References",
-    f"- Repository model card: https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
+    f"model card https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
 )
 # Patterns that must never appear in tutorial code (comment-stripped), in any cell.
 FORBIDDEN_PATTERNS = (

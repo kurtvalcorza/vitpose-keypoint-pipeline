@@ -81,6 +81,45 @@ def pose_metrics(predictions: Sequence[Mapping[str, Sequence[float]]], records: 
     }
 
 
+def paired_bootstrap(
+    a: Sequence[Mapping[str, Any]],
+    b: Sequence[Mapping[str, Any]],
+    groups: Sequence[Any],
+    *,
+    n_boot: int = 2000,
+    seed: int = 0,
+    level: float = 0.95,
+) -> dict[str, dict[str, float]]:
+    """Photo-clustered paired bootstrap of ``mean(a) - mean(b)`` over aligned per-record rows (``pose_metrics``
+    ``per_record``) for PCK, OKS and their mean (``score``): whole photographs (``groups``, one key per row) are
+    resampled with replacement, so persons from one photograph move together. Returns the point difference and the
+    percentile interval per measure. An interval is sampling uncertainty over these persons only, at one seed."""
+    if not (len(a) == len(b) == len(groups)) or not a:
+        raise ValueError("a, b and groups must be non-empty and the same length")
+    if [r["id"] for r in a] != [r["id"] for r in b]:
+        raise ValueError("a and b must score the same records in the same order")
+    keys = sorted({str(g) for g in groups})
+    index = {k: i for i, k in enumerate(keys)}
+    cluster = np.asarray([index[str(g)] for g in groups])
+    out = {}
+    for measure in ("pck", "oks", "score"):
+        def values(rows, measure=measure):
+            if measure == "score":
+                return np.asarray([(r["pck"] + r["oks"]) / 2.0 for r in rows])
+            return np.asarray([r[measure] for r in rows])
+
+        diff = values(a) - values(b)
+        sums = np.bincount(cluster, weights=diff, minlength=len(keys))
+        counts = np.bincount(cluster, minlength=len(keys)).astype(float)
+        rng = np.random.default_rng(seed)
+        draws = rng.integers(0, len(keys), size=(n_boot, len(keys)))
+        boot = sums[draws].sum(axis=1) / counts[draws].sum(axis=1)
+        tail = (1.0 - level) / 2.0
+        out[measure] = {"delta": float(diff.mean()), "low": float(np.quantile(boot, tail)), "high": float(np.quantile(boot, 1.0 - tail))}
+    out["n"] = {"records": len(a), "photographs": len(keys), "n_boot": n_boot, "level": level}
+    return out
+
+
 def box_centre_baseline(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Every joint at the centre of the person box — the floor."""
     predictions = []
