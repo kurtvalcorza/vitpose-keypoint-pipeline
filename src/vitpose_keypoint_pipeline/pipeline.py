@@ -108,7 +108,7 @@ HEATMAP_SIGMA = 2.0  # heatmap pixels; the ViTPose/mmpose target Gaussian
 # The recipe grid, fixed before any grid score was read (review finding VTP-M6): the task is fixed (40-px persons, JPEG
 # quality 30) and so are lr 5e-5, batch 8, 8 epochs, split seed 42 and adapt seed 0; only the trainable scope varies.
 RECIPE_GRID = (("G1", 0), ("G2", 2), ("G3", 4))  # (name, trainable encoder blocks besides the heatmap head)
-RECIPE_MARGIN = 0.01  # a larger config must beat a smaller one (and any config the frozen model) by more than this
+RECIPE_MARGIN = 0.01  # a preference for the smaller model (and for the frozen one), not a significance test
 
 
 def _sha256(path: Path) -> str:
@@ -500,7 +500,8 @@ def _heatmap_targets(record: Mapping[str, Any], crop: tuple[int, int], heatmap: 
 
     The crop-to-heatmap mapping is the UDP one the pinned processor decodes with (`transform_preds`: heatmap pixel
     ``h`` -> crop ``h * (crop - 1) / (heatmap - 1)``), so a target encoded here decodes back to its joint exactly
-    (review finding VTP-M5); ``crop / heatmap`` would shift every target by up to half a crop pixel."""
+    (review finding VTP-M5); ``crop / heatmap`` instead shifts a target by a bias that grows linearly across the crop,
+    from 0 at the crop origin to about 0.6 px per axis at the far corner on a 40-px box (mean 0.47, max 0.93 px)."""
     import numpy as np
     from transformers.models.vitpose.image_processing_vitpose import box_to_center_and_scale, get_warp_matrix
 

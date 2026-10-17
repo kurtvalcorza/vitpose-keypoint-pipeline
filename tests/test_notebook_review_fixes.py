@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from vitpose_keypoint_pipeline import paired_bootstrap
 from vitpose_keypoint_pipeline import samples as sm
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -223,7 +224,8 @@ def test_vtp_m2_no_quality_assert_remains(notebook):
 
 
 def _m(pck, oks):
-    return {"pck": pck, "oks": oks, "n": 4, "verdict": "measured-small-sample", "definitions": {}, "per_category": {"full": {"n": 4, "pck": pck, "oks": oks}}, "baseline": "stand-in"}
+    return {"pck": pck, "oks": oks, "n": 4, "verdict": "measured-small-sample", "definitions": {}, "per_category": {"full": {"n": 4, "pck": pck, "oks": oks}}, "baseline": "stand-in",
+            "per_record": [{"id": "p1", "pck": pck, "oks": oks}]}
 
 
 def test_vtp_m2_a_run_without_a_gain_is_recorded_and_does_not_stop_the_notebook(notebook, tmp_path, monkeypatch):
@@ -231,14 +233,15 @@ def test_vtp_m2_a_run_without_a_gain_is_recorded_and_does_not_stop_the_notebook(
     both cells complete and record `no gain` (stand-in evidence, no model)."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir()
-    scores = iter([_m(0.6, 0.56), _m(0.957, 0.94), _m(0.6, 0.56), _m(0.6, 0.56), _m(0.959, 0.93)])
+    scores = iter([_m(0.6, 0.56), _m(0.957, 0.94), _m(0.6, 0.56), _m(0.6, 0.56), _m(0.959, 0.92)])
 
     class StandIn:
         def evaluate(self, records):
             return next(scores)
 
     ns = {
-        "pipe": StandIn(), "train_records": [], "val_records": [], "test_records": [], "clean_test": [], "time": __import__("time"), "json": json,
+        "pipe": StandIn(), "train_records": [], "val_records": [], "test_records": [{"id": "p1", "image_id": 1}], "clean_test": [], "time": __import__("time"), "json": json,
+        "dev_test_records": None, "clean_dev": None, "RECIPE_MARGIN": 0.01, "paired_bootstrap": paired_bootstrap, "image_digest": lambda image: "d",
         "box_centre_baseline": lambda r: _m(0.086, 0.165), "mean_pose_baseline": lambda a, b: _m(0.472, 0.44),
         "MODEL_ID": "stand-in", "MODEL_REVISION": "0" * 40, "MODEL_KEY": "stand-in", "data_source": "stand-in", "dataset_manifests": {"test": {"digest": "d"}},
         "TARGET_HEIGHT": 40, "JPEG_QUALITY": 30, "disjoint": {}, "adapt_result": {"history": [], "trainable_names": []}, "adapt_seconds": 0.0, "recipe_selection": {"chosen": "G2"},
@@ -247,8 +250,9 @@ def test_vtp_m2_a_run_without_a_gain_is_recorded_and_does_not_stop_the_notebook(
     assert ns["frozen_verdict"] == "frozen above the box-centre floor"
     exec(_cell(notebook, "adapted_val = pipe.evaluate(val_records)"), ns)
     verdicts = json.loads((tmp_path / "outputs" / f"{STEM}_evaluation_report.json").read_text(encoding="utf-8"))["comparison"]["verdicts"]
-    assert verdicts["adapted_vs_frozen_pck"] == "no gain" and verdicts["adapted_vs_frozen_oks"] == "no gain"
-    assert verdicts["clean_pck"] == "improved" and verdicts["clean_oks"] == "worse"
+    # Verdicts use the stated 0.01 tolerance (review m2): +0.002 clean PCK is no measurable change, -0.02 OKS is worse.
+    assert verdicts["adapted_vs_frozen_pck"] == "no measurable change" and verdicts["adapted_vs_frozen_oks"] == "no measurable change"
+    assert verdicts["clean_pck"] == "no measurable change" and verdicts["clean_oks"] == "worse"
 
 
 # --- VTP-M4: guided layer and infrastructure labelling ----------------------------------------------------------

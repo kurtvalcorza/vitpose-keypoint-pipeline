@@ -177,28 +177,47 @@ def test_degrade_scales_image_box_and_joints_together():
 
 
 def test_pins_categories_and_split_sizes():
-    extra = sm.VALIDATION_EXTRA_IMAGES
+    extra = sm.FRESH_TEST_IMAGES
     assert len(SAMPLE_IMAGES) == sm.SPLIT_IMAGES == 300 and sum(len(e[7]) for e in SAMPLE_IMAGES) == 498
-    assert len(extra) == sm.VALIDATION_EXTRA_PHOTOGRAPHS == 65 and sum(len(e[7]) for e in extra) == 96
+    assert len(extra) == sm.FRESH_TEST_PHOTOGRAPHS == 65 and sum(len(e[7]) for e in extra) == 96
     pinned = SAMPLE_IMAGES + extra
     assert len(pinned) == sm.CORPUS_IMAGES == 365 and sum(len(e[7]) for e in pinned) == sm.CORPUS_PERSONS == 594
     assert len({e[0] for e in pinned}) == 365  # the validation-only photographs are not in the 300-photograph draw
     assert sum(e[1] for e in pinned) == sm.CORPUS_BYTES and all(len(e[2]) == 64 and e[5] in (4, 5) for e in pinned)
     assert all(len(person[2].split()) == 51 for e in pinned for person in e[7])
     assert category_for(17) == "full" and category_for(15) == "partial" and category_for(12) == "sparse"
-    assert sum(SAMPLE_SPLIT.values()) == 300
+    assert sum(SAMPLE_SPLIT.values()) == 300 and list(SAMPLE_SPLIT) == ["train", "validation", "development_test"]
 
 
-def test_validation_only_photographs_join_validation_and_leave_train_and_test_unchanged():
+def test_fresh_photographs_form_the_test_split_and_the_draw_is_unchanged():
     core = SAMPLE_IMAGES[:12]
-    extra = sm.VALIDATION_EXTRA_IMAGES[:2]
+    extra = sm.FRESH_TEST_IMAGES[:2]
     records = [{"image_id": e[0], "id": f"r{e[0]}"} for e in core + extra]
-    sizes = {"train": 8, "validation": 2, "test": 2}
+    sizes = {"train": 8, "validation": 2, "development_test": 2}
     with_extra = build_sample_dataset(records, sizes=sizes)
     without = build_sample_dataset(records[: len(core)], sizes=sizes)
-    assert with_extra["train"] == without["train"] and with_extra["test"] == without["test"]
-    assert with_extra["validation"][: len(without["validation"])] == without["validation"]
-    assert {r["image_id"] for r in with_extra["validation"]} - {r["image_id"] for r in without["validation"]} == {e[0] for e in extra}
+    assert list(with_extra) == ["train", "validation", "development_test", "test"] and "test" not in without
+    assert all(with_extra[k] == without[k] for k in sizes)
+    assert {r["image_id"] for r in with_extra["test"]} == {e[0] for e in extra}
+    assert sm.check_image_ids_disjoint(with_extra) == {"train": 8, "validation": 2, "development_test": 2, "test": 2}
+
+
+def test_image_id_disjointness_catches_a_shared_photograph():
+    splits = {"train": [{"image_id": 1, "id": "a"}], "test": [{"image_id": 1, "id": "b"}]}
+    with pytest.raises(ValueError, match="photograph 1 is in both"):
+        sm.check_image_ids_disjoint(splits)
+
+
+def test_paired_bootstrap_clusters_by_photograph():
+    from vitpose_keypoint_pipeline import paired_bootstrap
+
+    a = [{"id": str(i), "pck": 1.0 if i < 4 else 0.0, "oks": 0.5} for i in range(8)]
+    b = [{"id": str(i), "pck": 0.0, "oks": 0.5} for i in range(8)]
+    out = paired_bootstrap(a, b, [i // 4 for i in range(8)], n_boot=500)  # two photographs of four persons
+    assert out["pck"]["delta"] == pytest.approx(0.5) and out["n"]["photographs"] == 2
+    assert out["pck"]["low"] == pytest.approx(0.0) and out["pck"]["high"] == pytest.approx(1.0)
+    with pytest.raises(ValueError, match="same records"):
+        paired_bootstrap(a, b[::-1], [0] * 8)
 
 
 def _fake_photo(entry):
@@ -235,10 +254,10 @@ def test_read_corpus_builds_degraded_records_from_verified_bytes():
 
 def test_default_draw_matches_the_pinned_digest_when_the_photos_are_cached():
     cached = sm.DEFAULT_CACHE_DIR
-    if not all((cached / f"{e[0]:012d}.jpg").is_file() for e in SAMPLE_IMAGES + sm.VALIDATION_EXTRA_IMAGES):
+    if not all((cached / f"{e[0]:012d}.jpg").is_file() for e in SAMPLE_IMAGES + sm.FRESH_TEST_IMAGES):
         pytest.skip("COCO photographs not cached")
     splits = build_sample_dataset(read_corpus(fetch_corpus(cache_dir=cached)))
-    expected = {**SAMPLE_SPLIT, "validation": SAMPLE_SPLIT["validation"] + sm.VALIDATION_EXTRA_PHOTOGRAPHS}
+    expected = {**SAMPLE_SPLIT, "test": sm.FRESH_TEST_PHOTOGRAPHS}
     assert {k: len({r["image_id"] for r in v}) for k, v in splits.items()} == expected
     assert check_split_disjoint(splits)
     assert dataset_digest([r for part in splits.values() for r in part]) == sm.SAMPLE_DIGEST

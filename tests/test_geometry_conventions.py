@@ -114,3 +114,33 @@ def test_recipe_rule_prefers_fewer_blocks_and_the_frozen_model_within_the_margin
     assert select_recipe(grid(0.655, 0.659, 0.66), 0.65)["chosen"] == "frozen"  # nothing beats frozen by > 0.01
     picked = select_recipe(grid(0.655, 0.67, 0.665), 0.65)
     assert picked["chosen"] == "G2" and picked["eligible"] == ["G2", "G3"]
+
+
+def test_target_centre_sits_on_the_processors_own_warped_pixels():
+    """S1: a blob at a known joint, warped by the real processor (no weights), peaks where `_heatmap_targets` puts the
+    Gaussian centre times the UDP stride, so the hand-copied warp arguments match the processor's."""
+    pytest.importorskip("scipy")  # the processor's affine warp needs SciPy
+    pytest.importorskip("transformers")
+    from transformers import VitPoseImageProcessor
+
+    from vitpose_keypoint_pipeline.pipeline import _heatmap_targets
+
+    processor = VitPoseImageProcessor(size={"height": 256, "width": 192})
+    rng = np.random.default_rng(3)
+    for _ in range(6):
+        jx, jy = float(rng.uniform(30, 50)), float(rng.uniform(40, 80))
+        box = [jx - float(rng.uniform(6, 12)), jy - float(rng.uniform(15, 25)), jx + float(rng.uniform(6, 12)), jy + float(rng.uniform(15, 25))]
+        yy, xx = np.mgrid[0:120, 0:90]
+        blob = np.exp(-((xx - jx) ** 2 + (yy - jy) ** 2) / (2 * 1.5**2))
+        image = Image.fromarray(np.uint8(np.round(255 * blob))).convert("RGB")
+        xywh = np.array([[box[0], box[1], box[2] - box[0], box[3] - box[1]]], dtype=np.float32)
+        crop = processor(image, boxes=[xywh], return_tensors="np")["pixel_values"][0][0]
+        crop = crop - crop.min()
+        crop = np.clip(crop - crop.max() * 0.2, 0, None)
+        cy, cx = np.mgrid[0 : crop.shape[0], 0 : crop.shape[1]]
+        peak = np.array([(crop * cx).sum() / crop.sum(), (crop * cy).sum() / crop.sum()])
+        targets, _w = _heatmap_targets({"box": box, "keypoints": {"Nose": [jx, jy]}}, (256, 192), (64, 48))
+        t = targets[0]
+        hy, hx = np.mgrid[0 : t.shape[0], 0 : t.shape[1]]
+        centre = np.array([(t * hx).sum() / t.sum(), (t * hy).sum() / t.sum()]) * np.array([(192 - 1) / (48 - 1), (256 - 1) / (64 - 1)])
+        assert np.abs(peak - centre).max() < 0.5, (peak, centre)

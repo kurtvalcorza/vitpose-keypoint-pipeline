@@ -11,7 +11,8 @@ the number of labelled joints (``full`` 16-17, ``partial`` 14-15, ``sparse`` 12-
 The default sample is 300 COCO val2017 photographs (Lin et al. 2014) whose Flickr licence is CC BY 2.0 or
 CC BY-SA 2.0 (COCO licence ids 4 and 5), each holding at least one non-crowd person with >= 12 labelled joints and a
 box at least 120 px tall (and 40 px wide) — 498 persons in all — plus every other val2017 photograph that meets the same
-rule (65 photographs, 96 persons, ``VALIDATION_EXTRA_IMAGES``), which enlarges the validation split only. Every photograph is pinned by byte size and SHA-256 and fetched from
+rule (65 photographs, 96 persons, ``FRESH_TEST_IMAGES``), which no earlier revision scored: they are the fresh
+confirmatory **test** split, and the earlier test photographs become the labelled **development test**. Every photograph is pinned by byte size and SHA-256 and fetched from
 the COCO image host at run time; its Flickr page and licence are kept in the record. The 2017 keypoint annotations
 (CC BY 4.0) travel inline in ``SAMPLE_IMAGES``. ``degrade`` turns each photograph into the input the adaptation is
 about: the whole image is downscaled so the person's box is ``TARGET_HEIGHT`` px tall and re-encoded as JPEG at
@@ -45,15 +46,18 @@ CORPUS_LICENSES = {4: ("Attribution License", "http://creativecommons.org/licens
 CORPUS_BYTES = 62_561_632  # all pinned photographs: the 300 split photographs plus the 65 validation-only ones
 CORPUS_IMAGES = 365
 CORPUS_PERSONS = 594
-SPLIT_IMAGES = 300  # the photographs the seeded train / validation / test draw cuts (498 persons)
-VALIDATION_EXTRA_PHOTOGRAPHS = 65  # every other qualifying val2017 photograph: validation only (96 persons)
+SPLIT_IMAGES = 300  # the photographs the seeded train / validation / development-test draw cuts (498 persons)
+FRESH_TEST_PHOTOGRAPHS = 65  # every other qualifying val2017 photograph, never scored before: the fresh test (96 persons)
 DEFAULT_CACHE_DIR = Path("weights") / "coco-val-persons"
 
 TARGET_HEIGHT = 40  # px; the person's box height after the stated downscaling
 JPEG_QUALITY = 30  # the JPEG re-encoding after downscaling
 MIN_LABELLED = 12  # labelled joints a record needs
 MIN_BOX_HEIGHT = 120  # px in the served photograph (before degradation)
-SAMPLE_SPLIT = {"train": 180, "validation": 45, "test": 75}  # images of the 300-photograph draw; persons follow their image
+# Images of the 300-photograph draw; persons follow their image. The 75 development-test photographs are the earlier
+# revisions' test split: their scores were read while the task and hyperparameters were set, so they are reported
+# for continuity only; FRESH_TEST_IMAGES is the confirmatory test (owner ruling on review finding VTP-M1, 2026-10-17).
+SAMPLE_SPLIT = {"train": 180, "validation": 45, "development_test": 75}
 SAMPLE_SEED = 42
 SAMPLE_DIGEST = "f4b1026566f8041617ecc01cddf27524cd18b773567a6390c7cb97ec33404a65"  # dataset_digest over the three default (degraded) splits together; tests pin it
 MIN_RECORDS = 8
@@ -368,9 +372,9 @@ SAMPLE_IMAGES: tuple[tuple[Any, ...], ...] = (
 
 # Every other COCO val2017 photograph that meets the same rule as SAMPLE_IMAGES (licence id 4 or 5; a non-crowd person
 # with >= 12 labelled joints and a box >= 120 px tall and >= 40 px wide, every such person kept), pinned the same way.
-# They enlarge the validation split only (review finding VTP-M6): the 300-photograph draw, and so the train and test
-# splits, are unchanged.
-VALIDATION_EXTRA_IMAGES: tuple[tuple[Any, ...], ...] = (
+# No revision scored them before this one: they are the fresh confirmatory test split. The 300-photograph draw is
+# unchanged, so train, validation and the development test are the earlier train, validation and test.
+FRESH_TEST_IMAGES: tuple[tuple[Any, ...], ...] = (
     (18837, 224384, "70f986167a5f1ea723ee2a25273f39ee1d1d7a3bf8b2fa3a37eca946111f1d93", 640, 480, 5, "http://farm9.staticflickr.com/8219/8372455764_124e052754_z.jpg", ((498085, "327.57,14.59,139.46,143.79", "377 37 2 0 0 0 374 34 2 0 0 0 361 33 2 383 49 2 344 53 2 391 74 2 334 79 2 403 93 2 347 103 2 392 98 2 372 103 1 416 114 2 406 96 2 439 151 1 432 132 2"),)),
     (22705, 102437, "01627a2e4b79593b0debcffcdcf9b6c795d0d9e71aa2a3e9e22a9db05a70bc85", 482, 640, 4, "http://farm3.staticflickr.com/2338/1940631815_acd4f4458e_z.jpg", ((434696, "143.50,83.40,219.55,525.20", "214 129 2 224 124 2 203 123 2 240 128 2 184 129 2 246 178 2 175 176 2 295 239 2 156 246 2 328 294 2 172 235 2 242 310 2 186 310 2 229 432 2 156 444 2 220 550 2 207 514 2"),)),
     (23899, 103211, "b7ef13fe4d8ab47a77e55dadd30295110ca97b7b3c3b8c85603009e7dc497983", 640, 425, 5, "http://farm2.staticflickr.com/1419/4598390017_b554e5d29b_z.jpg", ((448028, "214.89,145.17,182.41,200.56", "335 203 2 334 188 2 314 192 2 0 0 0 279 212 2 378 271 1 266 298 1 436 327 1 333 374 1 482 338 1 412 353 1 436 386 1 394 398 1 0 0 0 0 0 0 0 0 0 0 0 0"),)),
@@ -437,8 +441,8 @@ VALIDATION_EXTRA_IMAGES: tuple[tuple[Any, ...], ...] = (
     (546717, 129526, "568866e8e9f96505d841eef5abd34f0a35b60aaeeed9daf6d168eeb7f8e45521", 471, 640, 4, "http://farm3.staticflickr.com/2769/4117004152_d8508e562d_z.jpg", ((210611, "24.45,74.55,356.67,556.58", "255 180 2 269 166 2 238 169 2 293 158 2 202 160 2 294 213 2 175 214 2 358 227 2 149 332 2 314 168 2 149 436 2 179 359 2 96 317 1 131 524 1 91 502 1 0 0 0 0 0 0"),)),
     (559842, 322185, "3508dca3aae80f0658068368fd674fef7871ee48d56263b64be2ca868c769832", 640, 427, 4, "http://farm7.staticflickr.com/6039/6248453792_987793d2f0_z.jpg", ((1210807, "551.74,97.87,71.01,222.62", "579 120 2 583 115 2 575 115 2 593 115 2 0 0 0 600 132 2 573 135 2 614 178 2 558 160 2 594 194 2 563 168 2 592 203 2 577 202 2 596 259 2 579 259 2 606 304 2 586 302 2"), (1230812, "467.97,123.17,75.90,196.17", "496 145 2 499 142 2 493 143 2 508 141 2 0 0 0 523 164 2 479 164 2 536 186 2 474 191 2 515 195 2 491 200 1 516 217 1 490 216 1 516 260 2 487 255 1 525 304 2 495 302 2"), (1248776, "475.54,174.45,45.39,141.16", "497 196 2 502 194 2 493 194 2 507 193 2 489 193 1 510 211 2 481 210 2 516 233 2 474 227 1 512 254 2 485 215 2 502 263 2 484 263 2 503 286 2 483 285 2 503 306 2 481 307 2"), (1252158, "408.95,198.65,46.78,120.51", "420 215 2 424 212 2 418 212 2 432 215 2 0 0 0 443 230 2 414 229 2 444 252 2 415 250 2 436 264 2 426 264 2 444 261 2 426 261 2 441 281 2 423 282 2 443 308 2 424 307 2"), (1268611, "332.88,185.89,81.50,166.72", "364 210 2 368 208 2 360 209 2 377 208 2 353 209 1 387 225 2 350 233 2 400 237 2 340 249 2 406 248 2 343 264 2 385 277 2 364 273 2 379 309 2 370 298 2 373 336 2 367 333 2"), (1310157, "169.74,184.86,106.61,152.56", "228 208 2 231 204 2 223 204 2 0 0 0 215 207 2 240 223 2 203 222 2 256 226 2 189 233 2 267 221 2 175 246 2 231 264 2 211 264 2 233 296 2 229 294 2 211 310 2 239 325 2"), (1312552, "249.12,173.83,48.35,133.98", "275 189 2 278 185 2 272 185 2 284 187 1 0 0 0 283 205 2 263 204 2 289 227 2 259 227 1 285 246 2 258 245 2 283 247 2 266 245 2 286 275 2 270 277 2 286 300 2 266 300 2"), (1313582, "294.09,176.60,52.65,156.65", "316 204 2 319 200 2 312 201 2 0 0 0 302 196 1 326 213 2 301 214 2 335 232 2 300 237 2 0 0 0 320 225 2 326 265 2 308 267 2 336 288 2 308 301 2 325 310 2 307 332 1"), (2007002, "13.43,175.75,81.72,163.44", "59 198 2 61 195 2 54 196 2 0 0 0 43 199 2 67 218 2 38 219 2 72 241 2 34 241 2 82 252 2 41 258 2 66 260 2 47 259 2 74 296 2 54 298 2 79 333 2 25 308 2"))),
 )
-VALIDATION_EXTRA_IDS = frozenset(entry[0] for entry in VALIDATION_EXTRA_IMAGES)
-_PINNED_IMAGES = SAMPLE_IMAGES + VALIDATION_EXTRA_IMAGES
+FRESH_TEST_IDS = frozenset(entry[0] for entry in FRESH_TEST_IMAGES)
+_PINNED_IMAGES = SAMPLE_IMAGES + FRESH_TEST_IMAGES
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -578,12 +582,12 @@ def read_corpus(
 def build_sample_dataset(
     records: Sequence[Mapping[str, Any]], *, seed: int = SAMPLE_SEED, sizes: Mapping[str, int] | None = None
 ) -> dict[str, list[dict[str, Any]]]:
-    """Seeded image-level draw: shuffle the 300 split photographs, cut `sizes` (train / validation / test) images in
-    order, and give every person to its image's split; the `VALIDATION_EXTRA_IMAGES` photographs then join the
-    validation split only, so train and test are the same draw as before the validation split was enlarged."""
+    """Seeded image-level draw: shuffle the 300 split photographs, cut `sizes` (train / validation / development
+    test) images in order, and give every person to its image's split; the `FRESH_TEST_IMAGES` photographs form the
+    `test` split. Photo-disjointness is asserted by COCO image id (`check_image_ids_disjoint`)."""
     sizes = dict(sizes or SAMPLE_SPLIT)
-    extra = [dict(r) for r in records if r["image_id"] in VALIDATION_EXTRA_IDS]
-    records = [r for r in records if r["image_id"] not in VALIDATION_EXTRA_IDS]
+    extra = [dict(r) for r in records if r["image_id"] in FRESH_TEST_IDS]
+    records = [r for r in records if r["image_id"] not in FRESH_TEST_IDS]
     image_ids = sorted({r["image_id"] for r in records})
     random.Random(seed).shuffle(image_ids)
     needed = sum(sizes.values())
@@ -594,8 +598,9 @@ def build_sample_dataset(
         chosen = set(image_ids[cursor : cursor + count])
         out[name] = [dict(r) for r in records if r["image_id"] in chosen]
         cursor += count
-    if "validation" in out:
-        out["validation"].extend(extra)
+    if extra:
+        out["test"] = extra
+    check_image_ids_disjoint(out)
     return out
 
 
@@ -708,8 +713,26 @@ def dataset_digest(records: Sequence[Mapping[str, Any]]) -> str:
     return _sha256_bytes("\n".join(sorted(rows)).encode("utf-8"))
 
 
+def check_image_ids_disjoint(splits: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, int]:
+    """Assert no photograph is in two splits by the records' ``image_id`` (the sample's photograph identity; records
+    without one, such as BYOD, are skipped) and return the photographs per split. The pixel-digest check
+    (`check_split_disjoint`) cannot see this in the sample, because each person's degraded copy has its own pixels."""
+    owner: dict[Any, str] = {}
+    counts = {}
+    for name, part in splits.items():
+        ids = {r["image_id"] for r in part if "image_id" in r}
+        for image_id in ids:
+            if image_id in owner and owner[image_id] != name:
+                raise ValueError(f"photograph {image_id} is in both {owner[image_id]!r} and {name!r}")
+            owner[image_id] = name
+        counts[name] = len(ids)
+    return counts
+
+
 def check_split_disjoint(splits: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
-    """Assert no image (by decoded-pixel digest) appears in two splits; returns the split sizes."""
+    """Assert no image (by decoded-pixel digest) appears in two splits; returns the split sizes. It catches the same
+    decoded photograph in two splits (BYOD), not a resized or re-encoded copy, and not two degraded persons of one
+    sample photograph — `check_image_ids_disjoint` covers that."""
     seen: dict[str, str] = {}
     for name, part in splits.items():
         for r in part:

@@ -161,38 +161,56 @@ runtime, not general estimates.
 | 2026-09-14 | `0c58343` / `840b7f899948` (`TASK-INFERENCE`, superseded) | Kaggle CPU (`kurtvalcorza/dimer-nb2-vitpose-keypoint` v1) | Default sample path | 208.7 s | PASS — 8/8 ok code cells, 20 files, 532 MB staged; not evidence for the `E2E` blob |
 | 2026-09-14 | notebook blob `3fcfd7c0d6f7` (`TASK-INFERENCE`, superseded; commit `e1cd703`, generated at `ebe84a2`) | Local Windows-venv harness (`run_nb_local.py`, fresh kernel, `CUDA_VISIBLE_DEVICES=-1`), Python 3.12.10, torch 2.14.0+cu130 | Default sample path, all 8 code cells; both snapshots staged from the Hub into an empty `weights/`; 17/17 joints, PCK 1.0 | 129.0 s | PASS — pre-flight only for the earlier notebook |
 
-## Recipe selection (pre-registered, review finding VTP-M6)
+## Recipe selection (pre-registered, review findings VTP-M6 and peer-review M1)
 
-Fixed before any grid score was read (owner ruling C on the 2026-10-17 review): the task is 40-px persons with JPEG
-quality 30 (not tuned); lr 5e-5, batch 8, 8 epochs, split seed 42, adapt seed 0; the grid is **G1 head only**
-(`TRAINABLE_BLOCKS=0`), **G2 head + 2 blocks** (the earlier default) and **G3 head + 4 blocks**. Each keeps its best
-epoch by the mean of validation PCK and OKS. Rule (`select_recipe`, `RECIPE_MARGIN` = 0.01): a configuration is
-eligible only if its best validation score beats the frozen epoch-0 score by more than 0.01 (none eligible -> the frozen
-model); among eligible ones, in order of trainable blocks, a larger one replaces the current pick only if it beats it by
-more than 0.01. Test is scored once, for the chosen configuration.
+Owner rulings (2026-10-17): grid choice C, then a **fresh test**: the 65 qualifying COCO val2017 photographs that no
+revision had scored (96 persons, `FRESH_TEST_IMAGES`) are the confirmatory test; validation is the original 45
+photographs / 72 persons (no development-test photographs were moved into it, so the development test stays whole for
+continuity with earlier quotes); the earlier test split (75 photographs / 136 persons) is the **development test**:
+its scores were read while the 40-px / JPEG-30 task and lr 5e-5, batch 8, 8 epochs were set, so it is reported for
+continuity only. Splits (persons / photographs): train 290 / 180, validation 72 / 45,
+fresh test 96 / 65, development test 136 / 75; photo-disjoint by COCO image id
+(`check_image_ids_disjoint`). How the original 300 were drawn from the 365 qualifying photographs is not recorded in the
+repository history (commit `0071389` pins them without a selection rule; their ids interleave with the 65).
 
-Validation split: the 45 photographs / 72 persons of the seeded draw plus every other COCO val2017 photograph meeting
-the sample's rule (65 photographs / 96 persons, `VALIDATION_EXTRA_IMAGES`) = **110 photographs / 168 persons**;
-train (180 / 290) and test (75 / 136) are the same draw as before; all three photo-disjoint (`check_split_disjoint`).
+Grid: **G1 head only**, **G2 head + 2 blocks**, **G3 head + 4 blocks**; each keeps its best epoch by the mean of
+validation PCK and OKS. Rule (`select_recipe`, `RECIPE_MARGIN` = 0.01 — a preference for the smaller model, not a
+significance test): eligible only if the best validation score beats the frozen epoch-0 score by more than 0.01 (none ->
+frozen); among eligible ones, in order of trainable blocks, a larger one replaces the current pick only by more than 0.01.
 
-Validation score (mean of PCK and OKS) by epoch; epoch 0 is the frozen model (0.6202). Evidence: CPU
-development run of the fix branch on base `8934a7d9` (2026-10-17, `CUDA_VISIBLE_DEVICES=-1`, torch 2.14.0+cpu,
-transformers 4.57.6, float32, package API with the notebook defaults) — not clean-runtime evidence and not a run of the
-notebook blob; the hosted run of the new blob must reproduce it.
+Validation score by epoch (epoch 0 = frozen, 0.6482). Evidence: second CPU development run of the fix branch on
+base `8934a7d9` (2026-10-17, `CUDA_VISIBLE_DEVICES=-1`, torch 2.14.0+cpu, transformers 4.57.6, float32, package API
+with the notebook defaults) — not clean-runtime evidence and not a run of the notebook blob.
 
 | Config | Trainable blocks | Trainable parameters | ep 0 | ep 1 | ep 2 | ep 3 | ep 4 | ep 5 | ep 6 | ep 7 | ep 8 | Best epoch | Best score |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| G1 | 0 | 4,199,697 | 0.6202 | 0.6266 | 0.6324 | 0.6366 | 0.6401 | 0.6430 | 0.6439 | 0.6470 | 0.6478 | 8 | 0.6478 |
-| G2 | 2 | 18,376,977 | 0.6202 | 0.6696 | 0.6938 | 0.7067 | 0.7112 | 0.7142 | 0.7183 | 0.7168 | 0.7191 | 8 | 0.7191 |
-| G3 | 4 | 32,552,721 | 0.6202 | 0.7223 | 0.7393 | 0.7426 | 0.7432 | 0.7437 | 0.7462 | 0.7419 | 0.7473 | 8 | 0.7473 |
+| G1 | 0 | 4,199,697 | 0.6482 | 0.6532 | 0.6575 | 0.6627 | 0.6668 | 0.6668 | 0.6677 | 0.6656 | 0.6669 | 6 | 0.6677 |
+| G2 | 2 | 18,376,977 | 0.6482 | 0.6924 | 0.7063 | 0.7174 | 0.7209 | 0.7233 | 0.7235 | 0.7225 | 0.7243 | 8 | 0.7243 |
+| G3 | 4 | 32,552,721 | 0.6482 | 0.7298 | 0.7362 | 0.7412 | 0.7424 | 0.7405 | 0.7466 | 0.7426 | 0.7456 | 6 | 0.7466 |
 
-Selection: **G3** (G3, head and four blocks); eligible ['G1', 'G2', 'G3']. Test scored once for it: PCK 0.7413 /
-OKS 0.6948 (frozen 0.5968 / 0.5738); clean counterparts 0.9569 / 0.9397 ->
-0.9584 / 0.9388. Grid wall time on this CPU 22.9 min; estimated about 4 min on a T4
-from the previous revision's T4 timings (0.022 s per scored person, about 49 s of training for one G2 run; G1 and G3 assumed 0.6x and 1.4x of it) — an estimate, not a measurement.
+Best epochs: G1 6, G2 8, G3 6; the comparison holds for this learning rate and budget only, and G3 is the edge of the grid.
 
-Superseded development runs (not selection evidence): the recipe probes listed in `MODEL_CARD.md` (head only at 64 px,
-two blocks at 32 px, four blocks at 32 px) were scored on test before the earlier two-block default was fixed.
+Validation 95% intervals (mean of PCK and OKS; photo-clustered paired bootstrap, 2,000 resamples, one seed; reported, not
+used by the rule): G1 - frozen +0.019 [+0.008, +0.031]; G2 - frozen +0.076 [+0.043, +0.113]; G3 - frozen +0.098 [+0.062, +0.140]; G3 - G2 +0.022 [+0.004, +0.041].
+
+Selection: **G3**. Scored once after the choice, ground-truth boxes (an upper bound on the two-stage system):
+
+| Split | Frozen PCK / OKS | Chosen PCK / OKS | Clean frozen -> chosen (PCK / OKS) | Adapted − frozen, 95% interval (score) |
+|---|---|---|---|---|
+| Fresh test (96 persons) | 0.6131 / 0.5853 | 0.7726 / 0.7184 | 0.9769 / 0.9616 -> 0.9782 / 0.9609 | +0.146 [+0.102, +0.187] |
+| Development test (136 persons; read during earlier development) | 0.5968 / 0.5738 | 0.7428 / 0.6979 | 0.9569 / 0.9397 -> 0.9591 / 0.9380 | +0.135 [+0.092, +0.182] |
+
+Frozen scores per part (m8): validation 0.6686 / 0.6278, fresh test
+0.6131 / 0.5853, development test 0.5968 / 0.5738
+(PCK / OKS). Baselines on the fresh test: box-centre 0.0910 / 0.1724, mean-pose
+0.4193 / 0.4182. Grid wall time on this CPU 19.8 min; estimated about
+3 min on a T4 from the previous revision's T4 timings (0.022 s per scored person, about 49 s of training for one
+G2 run; G1 and G3 assumed 0.6x and 1.4x of it) — an estimate, not a measurement. Seeds: one (S2's three-seed grid was not
+run; CPU time).
+
+Superseded: the first pass of this fix (same day) used the 65 photographs as extra validation and scored the earlier test
+split (validation 168 persons; G3 chosen at 0.747; that test 0.597 -> 0.741 PCK). That split is now the development test.
+The recipe probes in `MODEL_CARD.md` (head only at 64 px, two blocks at 32 px, four blocks at 32 px) were scored on it too.
 
 ## Current status
 
