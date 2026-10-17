@@ -155,11 +155,62 @@ runtime, not general estimates.
 
 | Date (UTC) | Commit / notebook blob | Executor | Path exercised | Wall | Outcome |
 |---|---|---|---|---|---|
+| 2026-10-17 | `bc43916` (`bc43916007370131ea943a9b3d8b931a2f140de9`, PR #8 head) / blob `08d1c0c5` (`08d1c0c58f1cea805d41d8aa388c1694df1c0737`; fetched at that commit and blob-verified before the session). Evidence under `docs/execution-evidence/2026-10-17-bc43916/`: `vitpose_keypoint_colab_bc43916_colab-cli-t4_output.ipynb` SHA-256 `5087de51ec3b77090984d3aae63fe6e217c6559dc6f3a8bd365322da142fc487`, `exec.log` SHA-256 `c31751e15757d342314eca3d2f59d43be3d9fef0c25b5fd51f0356322a444b49`, `run_summary.json` SHA-256 `0593d1edb068de66f096a48f1338c6a8e0de97cb883ea4cf6aa1393d8056cad2` (copied byte for byte) | Colab CLI 0.7.4 sequential execution (`colab exec -f`), fresh Colab **Tesla T4** (Colab account 2; session `suite-vitpose-bc43916-6f65` started 2026-10-17T13:53:14Z, stopped after the run at 14:01:28Z) via the workspace `colab-cli-serial-test-suite`; kernel Python 3.13.15, isolated `uv` CPython 3.12.12 environment (48 locked packages, built in 56 s), `cuda:0`; not a browser Run all | Default sample path, one pass from a fresh runtime, no repository checkout; pre-registered settings (grid on, BYOD and Section 10 off): 365 COCO photographs (139.7 s fetch), persons 290 / 72 / 96 fresh test / 136 development test → recipe grid G1 / G2 / G3 on validation → G3 → fresh-test evaluation → development test → panels → adapter export → reload parity | 496.8 s (CLI wall; grid 175.3 s) | **PASSED — the pre-registered evaluation of record (REL13: hosted, this blob).** 13/13 code cells in order, 0 errors, no restart; `test_look` `pre-registered evaluation`, `settings_differing` `[]`. Grid best validation score (mean of PCK and OKS): G1 0.6677 (epoch 6), G2 0.7238 (epoch 8), G3 0.7466 (epoch 6) → **G3** (same as the CPU development run). Fresh test (96 persons): PCK frozen 0.613 → **adapted 0.773**, OKS 0.585 → **0.719**; adapted − frozen 95 % interval PCK +0.160 [+0.112, +0.205], OKS +0.133 [+0.091, +0.171], score +0.146 [+0.102, +0.187]; clean PCK 0.977 → 0.978, OKS 0.962 → 0.961; box-centre 0.091 / 0.172, mean pose 0.419 / 0.418. Development test (136; read during earlier development): PCK 0.597 → 0.743, OKS 0.574 → 0.698, clean OKS 0.94 → 0.938. Reload parity 8/8 persons (max 7.6e-06 px). See the record below |
 | 2026-10-09 | `bbd073c` / `49fc2c05` | Colab CLI 0.7.4 sequential execution (`colab exec -f`), fresh Colab Tesla T4; kernel Python 3.13.15, isolated `uv` CPython 3.12.12 environment from the 48-package hash lock (scipy 1.18.1 included; setup 69 s), `cuda:0` | Default sample path, one pass from a fresh runtime, no repository checkout (blob verified before execution); BYOD and Section 10 off | 319.8 s | **PASSED** — 13/13 code cells, 0 errors, no restart; 300 COCO photographs, 290 / 72 / 136 persons; synthetic scene `sample-sanity` (PCK 1.0); small-person PCK box-centre 0.086 / mean-pose 0.472 / frozen 0.598 / adapted 0.718, OKS 0.165 / 0.440 / 0.564 / 0.681; clean counterparts PCK 0.957 → 0.959, OKS 0.94 → 0.93; `best_epoch` 8 (adapt 62.8 s), `started_from` `pinned base`; reload parity 8/8 persons (max 7.6e-06 px); evidence `docs/execution-evidence/2026-10-09-bbd073c/` (executed notebook SHA-256 `0c6723556e31…`). Optional journeys not exercised |
 | 2026-09-20 | `29c1dde` / `050796f8` | Kaggle Tesla T4 (`kurtvalcorza/dimer-nb2-vitpose-keypoint` v2; image `torch 2.10.0+cu128` / `transformers 5.0.0` before the pinned install, `torch 2.14.0+cu130` / `transformers 4.57.6` after, Python 3.12.13, `cuda:0`) | Default sample path, `Run all` from a fresh interpreter with an empty Hugging Face cache and no repository checkout (blob SHA-1 verified against GitHub before execution) | 374.6 s | **PASSED only after a manual restart** — 11/11 code cells ok (1 restart after install cell), so not a one-pass `Run all` and not promotion evidence (REL2/RUN10; review finding VTP-M1); 320 files, 584 MB staged from the Hub into a clean cache; comparison {pck: {box_centre: 0.086, mean_pose: 0.472, frozen: 0.598, adapted: 0.718, frozen_clean: 0.957, adapted_clean: 0.959}, oks: {box_centre: 0.165, mean_pose: 0.44, frozen: 0.564, adapted: 0.681, frozen_clean: 0.94, adapted_clean: 0.93}, delta_vs_frozen: {pck: 0.119, oks: 0.117}, delta_vs_mean_pose: {pck: 0.245, oks: 0.241}, by_category: {full: {n: 38, frozen_pck: 0.604, adapted_pck: 0.795, frozen_oks: 0.579, adapted_oks: 0.721}, partial: {n: 47, frozen_pck: 0.627, adapted_pck: 0.703, frozen_oks: 0.569, adapted_oks: 0.677}, sparse: {n: 51, frozen_pck: 0.568, adapted_pck: 0.673, frozen_oks: 0.549, adapted_oks: 0.655}}}; reload parity {identical_persons: 8, of: 8, max_abs_difference_px: 7.629e-06}; run summary and executed notebook archived under `.agent/backups/kaggle-e2e-2026-09-19/out/dimer-nb2-vitpose-keypoint/v2/evidence/` in the workspace |
 | 2026-09-20 | committed template at the candidate revision (blob differs from the committed one in the recorded generating revision only) | Local WSL harness (`run_nb_local.py`: nbclient, fresh `python3` kernel, `CUDA_VISIBLE_DEVICES=0`, `HF_HUB_OFFLINE=1`, `DIMER_NOTEBOOK_CI_PREINSTALLED=1`), Python 3.12.3, torch 2.14.0+cu130, RTX 5070 Ti (`cuda:0`), both snapshots and the photographs pre-staged | Default sample path, all 11 code cells: pinned install skipped (pre-installed), both stagers reported nothing to fetch, both verifiers PASS (4 + 4 files), 300 photographs re-hashed from the cache, 498 persons degraded and split 290 / 72 / 136, four refusal probes raised, the drawing estimated (stage 1 found no `person`, PCK 1.0 from the drawn box), baselines 0.086 / 0.472 PCK, frozen 0.598 / 0.565 on the small persons in 1.8 s and 0.957 / 0.940 on the clean counterparts, 290 crops prepared in 1.5 s, eight epochs 30.3 s (validation PCK 0.663 → 0.710 / 0.723 / 0.732 / 0.735 / 0.734 / 0.744 / 0.741 / 0.743, epoch 6 kept on the mean score), adapted 0.715 / 0.681 (full 0.604 → 0.782, partial 0.627 → 0.712, sparse 0.568 → 0.667), clean counterparts 0.959 / 0.930, the drawing re-estimated at PCK 1.0, four panels written, adapter 73,512,628 B / 42 tensors, reload parity 8/8 with 0 px difference, 8 outputs written | 59.4 s | PASS — pre-flight only; not promotion evidence |
 | 2026-09-14 | `0c58343` / `840b7f899948` (`TASK-INFERENCE`, superseded) | Kaggle CPU (`kurtvalcorza/dimer-nb2-vitpose-keypoint` v1) | Default sample path | 208.7 s | PASS — 8/8 ok code cells, 20 files, 532 MB staged; not evidence for the `E2E` blob |
 | 2026-09-14 | notebook blob `3fcfd7c0d6f7` (`TASK-INFERENCE`, superseded; commit `e1cd703`, generated at `ebe84a2`) | Local Windows-venv harness (`run_nb_local.py`, fresh kernel, `CUDA_VISIBLE_DEVICES=-1`), Python 3.12.10, torch 2.14.0+cu130 | Default sample path, all 8 code cells; both snapshots staged from the Hub into an empty `weights/`; 17/17 joints, PCK 1.0 | 129.0 s | PASS — pre-flight only for the earlier notebook |
+
+### 2026-10-17 Colab CLI T4 run of `bc43916` (blob `08d1c0c5`): pre-registered evaluation of record
+
+- **Executor:** Google Colab CLI 0.7.4 (`colab exec -f`) on a fresh Colab VM with a Tesla T4, Colab account 2, through the
+  workspace `colab-cli-serial-test-suite` (session `suite-vitpose-bc43916-6f65`, 2026-10-17 13:53:14–14:01:28 UTC,
+  stopped after the run). Sequential CLI execution, not a browser Run all; forms and uploads were not exercised.
+- **Source identity:** fetched at the full PR #8 head `bc43916007370131ea943a9b3d8b931a2f140de9`; Git blob
+  `08d1c0c58f1cea805d41d8aa388c1694df1c0737` checked before the VM was allocated; the executed notebook's 38 cells have the
+  committed ids, order and sources. `NOTEBOOK_SOURCE.repository_revision` `8c159e3ecc17`.
+- **Outcome:** 13/13 code cells in order, one pass, no restart, 0 error outputs; 496.8 s CLI wall; isolated environment
+  built in 56 s; 365 photographs (62,561,632 bytes) fetched in 139.7 s.
+- **Evaluation status (REL13):** the notebook printed `test_look` `pre-registered evaluation`, `held_out` `fresh test`,
+  `settings_differing` `[]`. This is the first hosted run of the pre-registered settings, so it is **the pre-registered
+  evaluation of record**; a later hosted run with identical settings is a reproduction.
+- **Grid (validation, 72 persons; score = mean of PCK and OKS; epoch 0 = frozen 0.6482):** G1 (head) 0.6532, 0.6575,
+  0.6627, 0.6668, 0.6668, 0.6677, 0.6656, 0.6669 (best 0.6677, epoch 6, 47.6 s); G2 (head + 2 blocks) 0.6924, 0.7063,
+  0.7174, 0.7209, 0.7233, 0.7237, 0.7225, 0.7238 (best 0.7238, epoch 8, 57.9 s); G3 (head + 4 blocks) 0.7298, 0.7362,
+  0.7412, 0.7424, 0.7404, 0.7466, 0.7426, 0.7456 (best 0.7466, epoch 6, 68.4 s). Eligible G1, G2, G3; **selected G3**
+  (32,552,721 of 89,994,513 parameters), the same pick as the CPU development run. Validation 95 % intervals (not used by
+  the rule): G1 − frozen +0.019 [+0.008, +0.031]; G2 − frozen +0.076 [+0.042, +0.112]; G3 − frozen +0.098 [+0.062,
+  +0.140]; G3 − G2 +0.023 [+0.005, +0.042]. Grid 175.3 s.
+- **Fresh test (96 persons, 65 photographs; labelled boxes, an upper bound on the two-stage system):** PCK box-centre
+  0.091, mean pose 0.419, frozen 0.613, **adapted 0.773**; OKS 0.172 / 0.418 / 0.585 / **0.719**; adapted − frozen
+  (photo-clustered paired bootstrap, one seed) PCK +0.160 [+0.112, +0.205], OKS +0.133 [+0.091, +0.171], score +0.146
+  [+0.102, +0.187]; clean counterparts PCK 0.977 → 0.978, OKS 0.962 → 0.961 (no measurable change). By category (PCK
+  frozen → adapted): full 0.619 → 0.838 (36), partial 0.592 → 0.719 (34), sparse 0.632 → 0.752 (26).
+- **Development test (136 persons; read during earlier development; continuity only):** PCK 0.597 → 0.743, OKS 0.574 →
+  0.698; clean PCK 0.957 → 0.959, OKS 0.94 → 0.938.
+- **Development look (disclosed, score-once rule item 8):** the second CPU development run of the fix branch on base
+  `8934a7d9` (2026-10-17, package code of the fix branch, torch 2.14.0+cpu, float32; table in the recipe-selection
+  section) scored the fresh test at PCK 0.613 → 0.773 and OKS 0.585 → 0.718 with the same G3 choice. That is a development
+  look, not the record; the hosted figures differ from it only in the last digit (OKS 0.7184 on CPU, printed 0.719 here)
+  and in G2's later epochs (0.7238 here, 0.7243 on CPU).
+- **Other outputs:** synthetic scene `sample-sanity` (PCK 1.0); adapter 74 tensors, 130,219,412 bytes; reload parity 8/8
+  persons, max difference 7.6e-06 px, reloaded best epoch 6; Section 10 experiment skipped by default.
+- **Notebook quotes that this run contradicts (needs requote; this record does not edit the notebook):** cell 27 "G2
+  trails by 0.022" (hosted 0.023), G2 − frozen interval [+0.043, +0.113] (hosted [+0.042, +0.112]), G3 − G2 +0.022
+  [+0.004, +0.041] (hosted +0.023 [+0.005, +0.042]); cells 30 and 37 fresh-test adapted OKS 0.718 (hosted 0.719); the
+  T4 grid-time estimate of about 4 minutes (measured 175.3 s; the other estimate, about 3 minutes more than the previous
+  revision's 320 s run, matches). Equal at the printed precision: every frozen, baseline and clean figure (0.977, 0.613,
+  0.962, 0.585, 0.419 / 0.418, 0.091), validation 0.648 / 0.668 / 0.724 / 0.747 with best epochs 6 / 8 / 6, G3 − frozen
+  0.098, G1 trails by 0.079, adapted PCK 0.773, score interval +0.146 [+0.102, +0.187], clean 0.978 / 0.961, development
+  test 0.597 → 0.743, 0.574 → 0.698, clean OKS 0.940 → 0.938. Follow-up: requote these in the generator and regenerate,
+  and set `PREREGISTERED_EVALUATION_RECORD` (`src/vitpose_keypoint_pipeline/samples.py`, still `None`) to this record;
+  both change the notebook blob and are not part of this docs-only record.
+- **Evidence files** (`docs/execution-evidence/2026-10-17-bc43916/`, byte-exact copies):
+  - `vitpose_keypoint_colab_bc43916_colab-cli-t4_output.ipynb` — SHA-256 `5087de51ec3b77090984d3aae63fe6e217c6559dc6f3a8bd365322da142fc487`
+  - `exec.log` — SHA-256 `c31751e15757d342314eca3d2f59d43be3d9fef0c25b5fd51f0356322a444b49`
+  - `run_summary.json` — SHA-256 `0593d1edb068de66f096a48f1338c6a8e0de97cb883ea4cf6aa1393d8056cad2`
+- **Not exercised:** a browser Run all, the REL12 BYOD journeys, the Section 10 experiment and a Colab CPU runtime.
 
 ## Recipe selection (pre-registered, review findings VTP-M6 and peer-review M1)
 
@@ -177,6 +228,8 @@ Grid: **G1 head only**, **G2 head + 2 blocks**, **G3 head + 4 blocks**; each kee
 validation PCK and OKS. Rule (`select_recipe`, `RECIPE_MARGIN` = 0.01 — a preference for the smaller model, not a
 significance test): eligible only if the best validation score beats the frozen epoch-0 score by more than 0.01 (none ->
 frozen); among eligible ones, in order of trainable blocks, a larger one replaces the current pick only by more than 0.01.
+
+REL13: the figures in this section are the CPU **development look** (disclosed, score-once rule item 8). The pre-registered evaluation of record is the 2026-10-17 Colab T4 run recorded above (G3 selected again; fresh test PCK 0.613 → 0.773, OKS 0.585 → 0.719).
 
 Validation score by epoch (epoch 0 = frozen, 0.6482). Evidence: second CPU development run of the fix branch on
 base `8934a7d9` (2026-10-17, `CUDA_VISIBLE_DEVICES=-1`, torch 2.14.0+cpu, transformers 4.57.6, float32, package API
@@ -232,9 +285,12 @@ batch 8, 8 epochs, fine-tuning seed 0, grid G1 / G2 / G3 with margin 0.01 (`PRER
   second identical pass in one runtime is labelled a reproduction and written beside the first report).
 - The fresh-test numbers above come from a CPU development run of the package code under these settings, not a run of
   the notebook; no hosted run is recorded yet, so no evaluation record exists yet.
+- REL13 update (2026-10-17): the hosted Colab T4 run of blob `08d1c0c5` (recorded above) is now the pre-registered
+  evaluation of record; the CPU numbers above are a disclosed development look. `PREREGISTERED_EVALUATION_RECORD` is not
+  yet set in the package (follow-up; it changes the notebook blob).
 
 ## Current status
 
-**2026-10-17 row-110 review fixes (VTP-M5, VTP-M6, VTP-m3..m5):** the notebook blob changes, so it is **Candidate** again (REL14) until a hosted one-pass run of the new blob is recorded; the quoted numbers come from the CPU development run named in the recipe-selection section and must be refreshed from that hosted run (REL13). Earlier entries below describe earlier blobs.
+**Candidate.** **2026-10-17 row-110 review fixes (VTP-M5, VTP-M6, VTP-m3..m5):** the new blob `08d1c0c5` (PR #8 head `bc43916`) passed a hosted one-pass run on a fresh Colab Tesla T4 on 2026-10-17 (Colab CLI sequential execution, 13/13 code cells, 0 errors, 496.8 s; not a browser Run all). That run is the pre-registered evaluation of record (REL13): grid G3 selected on validation (0.7466); fresh test PCK 0.613 → 0.773, OKS 0.585 → 0.719, clean PCK 0.977 → 0.978; development test PCK 0.597 → 0.743. The notebook's quoted numbers still come from the CPU development run (a disclosed development look); four of them need a requote (see the run record). Status stays Candidate until the REL12 BYOD journeys are run. REL13: earlier-blob figures follow (the entries below describe earlier blobs).
 
 **Candidate.** The 2026-09-20 Kaggle T4 run of `29c1dde` / blob `050796f8` needed a manual restart after the install cell, so it is not a one-pass `Run all` and not promotion evidence (review finding VTP-M1), so the Release-grade label that rested on it is withdrawn. For the 2026-10-05 review-fix revision, the current blob `49fc2c05a6dd` (commit `bbd073c`) completed one pass with no restart and 0 errors on a fresh Colab Tesla T4 on 2026-10-09 (Colab CLI sequential execution, 13/13 code cells, 319.8 s; isolated `uv` environment, 48 locked packages including scipy for the ViTPose processor; small-person PCK frozen 0.598 / adapted 0.718, OKS 0.564 / 0.681, clean PCK 0.957 / 0.959, clean OKS 0.94 / 0.93; reload parity 8/8). The REL12 BYOD journeys have not been run on a hosted runtime; until they are, the status stays Candidate. Any later change to the carried modules or to the notebook produces a new blob that needs its own recorded run.
