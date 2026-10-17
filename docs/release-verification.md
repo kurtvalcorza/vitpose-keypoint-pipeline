@@ -193,7 +193,7 @@ Best epochs: G1 6, G2 8, G3 6; the comparison holds for this learning rate and b
 Validation 95% intervals (mean of PCK and OKS; photo-clustered paired bootstrap, 2,000 resamples, one seed; reported, not
 used by the rule): G1 - frozen +0.019 [+0.008, +0.031]; G2 - frozen +0.076 [+0.043, +0.113]; G3 - frozen +0.098 [+0.062, +0.140]; G3 - G2 +0.022 [+0.004, +0.041].
 
-Selection: **G3**. Scored once after the choice, ground-truth boxes (an upper bound on the two-stage system):
+Selection: **G3**. Scored after the choice under the pre-registered settings in this CPU development run, ground-truth boxes (an upper bound on the two-stage system):
 
 | Split | Frozen PCK / OKS | Chosen PCK / OKS | Clean frozen -> chosen (PCK / OKS) | Adapted − frozen, 95% interval (score) |
 |---|---|---|---|---|
@@ -211,6 +211,27 @@ run; CPU time).
 Superseded: the first pass of this fix (same day) used the 65 photographs as extra validation and scored the earlier test
 split (validation 168 persons; G3 chosen at 0.747; that test 0.597 -> 0.741 PCK). That split is now the development test.
 The recipe probes in `MODEL_CARD.md` (head only at 64 px, two blocks at 32 px, four blocks at 32 px) were scored on it too.
+
+### Amendment 2026-10-17: fresh-test score-once rule (settings unchanged)
+
+The owner's fleet-wide score-once rule (2026-10-17) applies to this pre-registration. **No pre-registered setting
+changes**: data source (the pinned COCO val2017 sample, no BYOD), split seed 42, degradation 40 px / JPEG 30, lr 5e-5,
+batch 8, 8 epochs, fine-tuning seed 0, grid G1 / G2 / G3 with margin 0.01 (`PREREGISTERED_SETTINGS`).
+
+- The fresh test is scored only when **all** of these match (`check_preregistration` returns `preregistered`, a boolean
+  over every setting, and the list of settings that differ). Section 4 of the notebook computes it before any score.
+- Every other run is **exploratory**: changing a form field (`SPLIT_SEED`, `RUN_RECIPE_GRID`, `TRAINABLE_BLOCKS`), BYOD,
+  the degradation or training constants, a smaller batch for memory, or the Section 10 experiment. It compares on
+  validation only, never scores the fresh test (the labelled development test may be shown), says so when it starts, and
+  writes `*_exploratory_<n>.json` instead of the pre-registered report and result files.
+- The grid in Section 7 is selection only: it reads validation and never the fresh test.
+- Reports carry `test_look` (`pre-registered evaluation` | `reproduction` | `not scored (exploratory)`), `preregistered`
+  and `settings_differing`. The first recorded pre-registered **hosted** run of the notebook is the evaluation; later
+  runs with identical settings are labelled a **reproduction of the pre-registered evaluation**, provided nothing was
+  changed in response to the test number (`PREREGISTERED_EVALUATION_RECORD` is set to that record once it exists; a
+  second identical pass in one runtime is labelled a reproduction and written beside the first report).
+- The fresh-test numbers above come from a CPU development run of the package code under these settings, not a run of
+  the notebook; no hosted run is recorded yet, so no evaluation record exists yet.
 
 ## Current status
 

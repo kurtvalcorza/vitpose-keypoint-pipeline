@@ -36,7 +36,7 @@ from typing import Any
 
 from PIL import Image
 
-from .pipeline import KEYPOINT_NAMES, MODEL_ID, _check_boxes, validate_image
+from .pipeline import KEYPOINT_NAMES, MODEL_ID, RECIPE_GRID, RECIPE_MARGIN, _check_boxes, validate_image
 
 CORPUS_NAME = "COCO 2017 validation persons (Flickr CC BY 2.0 / CC BY-SA 2.0 photographs; keypoint annotations CC BY 4.0)"
 CORPUS_RELEASE = "COCO 2017 (annotations_trainval2017 person_keypoints_val2017.json; images val2017)"
@@ -61,6 +61,84 @@ SAMPLE_SPLIT = {"train": 180, "validation": 45, "development_test": 75}
 SAMPLE_SEED = 42
 SAMPLE_DIGEST = "f4b1026566f8041617ecc01cddf27524cd18b773567a6390c7cb97ec33404a65"  # dataset_digest over the three default (degraded) splits together; tests pin it
 MIN_RECORDS = 8
+
+# Fresh-test score-once rule (owner ruling, 2026-10-17). The fresh test is scored only when EVERY setting the
+# pre-registration fixes matches; any other run is exploratory: validation only, the fresh test is never scored, and
+# its report goes to a separate `*_exploratory_<n>.json`. The first recorded pre-registered hosted run is the result;
+# later identical runs are reproductions of it (see docs/release-verification.md).
+PREREGISTERED_DATA_SOURCE = "pinned COCO val2017 sample"
+PREREGISTERED_SETTINGS: dict[str, Any] = {
+    "data_source": PREREGISTERED_DATA_SOURCE,
+    "byod": False,
+    "split_seed": SAMPLE_SEED,
+    "target_height_px": TARGET_HEIGHT,
+    "jpeg_quality": JPEG_QUALITY,
+    "learning_rate": 5e-5,
+    "batch_size": 8,
+    "epochs": 8,
+    "adapt_seed": 0,
+    "run_recipe_grid": True,
+    "recipe_grid": [[name, blocks] for name, blocks in RECIPE_GRID],
+    "recipe_margin": RECIPE_MARGIN,
+}
+TEST_LOOKS = ("pre-registered evaluation", "reproduction", "not scored (exploratory)")
+# The release-verification record of the first pre-registered hosted run once one exists (None: none recorded yet).
+# While it is set, every later run with the pre-registered settings is labelled a reproduction.
+PREREGISTERED_EVALUATION_RECORD: str | None = None
+
+
+def _canonical_setting(value: Any) -> Any:
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, (list, tuple)):
+        return [_canonical_setting(v) for v in value]
+    return value
+
+
+def check_preregistration(settings: Mapping[str, Any]) -> dict[str, Any]:
+    """Compare a run's settings with ALL of `PREREGISTERED_SETTINGS` (data source, BYOD, split seed, degradation size and
+    JPEG quality, learning rate, batch size, epochs, fine-tuning seed, grid members and margin). Returns
+    ``{"preregistered": bool, "settings_differing": [names], "settings": {...}}``; a missing or unknown key is refused,
+    so no setting can be left out of the comparison."""
+    missing = sorted(set(PREREGISTERED_SETTINGS) - set(settings))
+    unknown = sorted(set(settings) - set(PREREGISTERED_SETTINGS))
+    if missing or unknown:
+        raise ValueError(f"run settings must name exactly the pre-registered settings (missing {missing}, unknown {unknown})")
+    differing = [
+        name
+        for name, fixed in PREREGISTERED_SETTINGS.items()
+        if isinstance(settings[name], bool) != isinstance(fixed, bool)  # a bool never stands in for a number
+        or _canonical_setting(settings[name]) != _canonical_setting(fixed)
+    ]
+    return {"preregistered": not differing, "settings_differing": differing, "settings": {k: settings[k] for k in PREREGISTERED_SETTINGS}}
+
+
+def plan_test_look(
+    check: Mapping[str, Any], outputs_dir: str | Path, stem: str, *, recorded_evaluation: str | None = None
+) -> dict[str, Any]:
+    """Label a run's look at the fresh test and name its report file suffix. Exploratory runs (any setting differs) never
+    score the fresh test and write ``<stem>_evaluation_report_exploratory_<n>.json``. A pre-registered run is the
+    pre-registered evaluation, unless one is already recorded (`recorded_evaluation`, default
+    `PREREGISTERED_EVALUATION_RECORD`) or this runtime already wrote the canonical report: then it is a reproduction, and
+    a same-runtime reproduction writes ``_reproduction_<n>`` instead of overwriting the canonical report."""
+    recorded = PREREGISTERED_EVALUATION_RECORD if recorded_evaluation is None else recorded_evaluation
+    out = Path(outputs_dir)
+
+    def next_free(kind: str) -> str:
+        n = 1
+        while (out / f"{stem}_evaluation_report_{kind}_{n}.json").exists():
+            n += 1
+        return f"_{kind}_{n}"
+
+    base = {"preregistered": bool(check["preregistered"]), "settings_differing": list(check["settings_differing"])}
+    if not check["preregistered"]:
+        return {**base, "test_look": TEST_LOOKS[2], "suffix": next_free("exploratory"), "fresh_test_scored": False}
+    if (out / f"{stem}_evaluation_report.json").exists():
+        return {**base, "test_look": TEST_LOOKS[1], "suffix": next_free("reproduction"), "fresh_test_scored": True}
+    return {**base, "test_look": TEST_LOOKS[1] if recorded else TEST_LOOKS[0], "suffix": "", "fresh_test_scored": True}
+
 MAX_RECORDS = 5_000
 MAX_CATEGORY_CHARS = 32
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")

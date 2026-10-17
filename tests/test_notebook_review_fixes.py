@@ -244,7 +244,10 @@ def test_vtp_m2_a_run_without_a_gain_is_recorded_and_does_not_stop_the_notebook(
         "dev_test_records": None, "clean_dev": None, "RECIPE_MARGIN": 0.01, "paired_bootstrap": paired_bootstrap, "image_digest": lambda image: "d",
         "box_centre_baseline": lambda r: _m(0.086, 0.165), "mean_pose_baseline": lambda a, b: _m(0.472, 0.44),
         "MODEL_ID": "stand-in", "MODEL_REVISION": "0" * 40, "MODEL_KEY": "stand-in", "data_source": "stand-in", "dataset_manifests": {"test": {"digest": "d"}},
-        "TARGET_HEIGHT": 40, "JPEG_QUALITY": 30, "disjoint": {}, "adapt_result": {"history": [], "trainable_names": []}, "adapt_seconds": 0.0, "recipe_selection": {"chosen": "G2"},
+        "TARGET_HEIGHT": 40, "JPEG_QUALITY": 30, "disjoint": {}, "adapt_result": {"history": [], "trainable_names": []}, "adapt_seconds": 0.0,
+        "held_out_name": "fresh test", "held_out_records": [{"id": "p1", "image_id": 1}], "held_out_clean": [], "RUN_SETTINGS": dict(sm.PREREGISTERED_SETTINGS),
+        "preregistration": sm.check_preregistration(dict(sm.PREREGISTERED_SETTINGS)), "plan_test_look": sm.plan_test_look, "Path": Path,
+        "recipe_selection": {"chosen": "G2", "settings": dict(sm.PREREGISTERED_SETTINGS), "preregistration": sm.check_preregistration(dict(sm.PREREGISTERED_SETTINGS))},
     }
     exec(_cell(notebook, "baseline_centre = box_centre_baseline("), ns)
     assert ns["frozen_verdict"] == "frozen above the box-centre floor"
@@ -362,6 +365,9 @@ def test_vtp_m1_byod_path_runs_section_4_outside_colab_from_the_base(notebook, t
     assert restored == [True], "a BYOD re-run must put the model back to the pinned base first"
     assert ns["raw_rows"] == {"byod": 14, "effective_minimum": 12}
     assert "held-out test persons" in out
+    # Score-once rule: a BYOD run is exploratory, so its held-out rows are validation and the fresh test is never scored.
+    assert ns["preregistration"]["preregistered"] is False and {"data_source", "byod"} <= set(ns["preregistration"]["settings_differing"])
+    assert ns["held_out_records"] is ns["val_records"]
     assert (tmp_path / "outputs" / f"{STEM}_train.csv").is_file()
 
 
@@ -412,19 +418,20 @@ def test_vtp_m2_prose_names_its_runs_and_reads_clean_oks(notebook):
 # --- Row-110 review (2026-10-17): VTP-M6 pre-registration, VTP-m3 DAT9 ------------------------------------------
 
 
-def test_vtp_m6_preregistration_precedes_every_score_and_test_is_scored_once(notebook):
+def test_vtp_m6_preregistration_precedes_every_score_and_test_is_scored_only_when_preregistered(notebook):
     cells = notebook["cells"]
     text = ["".join(c["source"]) if isinstance(c["source"], list) else c["source"] for c in cells]
     prereg = next(i for i, t in enumerate(text) if "**Pre-registered recipe (fixed before any grid score was read).**" in t)
-    first_score = next(i for i, t in enumerate(text) if cells[i]["cell_type"] == "code" and "frozen_test = pipe.evaluate(test_records)" in t)
+    first_score = next(i for i, t in enumerate(text) if cells[i]["cell_type"] == "code" and "frozen_test = pipe.evaluate(held_out_records)" in t)
     assert prereg < first_score
     markdown = _markdown(notebook)
     assert "are why the default is" not in markdown
     grid_cell = next(t for t in text if "recipe_selection = select_recipe(grid_rows, frozen_val_score)" in t)
-    assert "RUN_RECIPE_GRID = True" in grid_cell and "evaluate(test_records)" not in grid_cell
+    assert "RUN_RECIPE_GRID = True" in _cell(notebook, "USE_BYOD = False") and "evaluate(test_records)" not in grid_cell and "evaluate(held_out_records)" not in grid_cell
     code = "\n".join(t for c, t in zip(cells, text, strict=True) if c["cell_type"] == "code")
-    # frozen (Section 6) and the chosen configuration (Section 8); Section 10's own experiment_pipe is a labelled one-off
-    assert len(re.findall(r"(?<![\w])pipe\.evaluate\(test_records\)", code)) == 2
+    # frozen (Section 6) and the chosen configuration (Section 8), on the fresh test only under the pre-registered settings;
+    # Section 10's experiment is exploratory and reads validation only.
+    assert len(re.findall(r"(?<![\w])pipe\.evaluate\(held_out_records\)", code)) == 2 and "evaluate(test_records)" not in code
 
 
 def test_vtp_m3_states_the_val2017_overlap(notebook):
