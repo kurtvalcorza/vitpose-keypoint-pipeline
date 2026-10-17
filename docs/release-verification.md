@@ -161,6 +161,41 @@ runtime, not general estimates.
 | 2026-09-14 | `0c58343` / `840b7f899948` (`TASK-INFERENCE`, superseded) | Kaggle CPU (`kurtvalcorza/dimer-nb2-vitpose-keypoint` v1) | Default sample path | 208.7 s | PASS — 8/8 ok code cells, 20 files, 532 MB staged; not evidence for the `E2E` blob |
 | 2026-09-14 | notebook blob `3fcfd7c0d6f7` (`TASK-INFERENCE`, superseded; commit `e1cd703`, generated at `ebe84a2`) | Local Windows-venv harness (`run_nb_local.py`, fresh kernel, `CUDA_VISIBLE_DEVICES=-1`), Python 3.12.10, torch 2.14.0+cu130 | Default sample path, all 8 code cells; both snapshots staged from the Hub into an empty `weights/`; 17/17 joints, PCK 1.0 | 129.0 s | PASS — pre-flight only for the earlier notebook |
 
+## Recipe selection (pre-registered, review finding VTP-M6)
+
+Fixed before any grid score was read (owner ruling C on the 2026-10-17 review): the task is 40-px persons with JPEG
+quality 30 (not tuned); lr 5e-5, batch 8, 8 epochs, split seed 42, adapt seed 0; the grid is **G1 head only**
+(`TRAINABLE_BLOCKS=0`), **G2 head + 2 blocks** (the earlier default) and **G3 head + 4 blocks**. Each keeps its best
+epoch by the mean of validation PCK and OKS. Rule (`select_recipe`, `RECIPE_MARGIN` = 0.01): a configuration is
+eligible only if its best validation score beats the frozen epoch-0 score by more than 0.01 (none eligible -> the frozen
+model); among eligible ones, in order of trainable blocks, a larger one replaces the current pick only if it beats it by
+more than 0.01. Test is scored once, for the chosen configuration.
+
+Validation split: the 45 photographs / 72 persons of the seeded draw plus every other COCO val2017 photograph meeting
+the sample's rule (65 photographs / 96 persons, `VALIDATION_EXTRA_IMAGES`) = **110 photographs / 168 persons**;
+train (180 / 290) and test (75 / 136) are the same draw as before; all three photo-disjoint (`check_split_disjoint`).
+
+Validation score (mean of PCK and OKS) by epoch; epoch 0 is the frozen model (0.6202). Evidence: CPU
+development run of the fix branch on base `8934a7d9` (2026-10-17, `CUDA_VISIBLE_DEVICES=-1`, torch 2.14.0+cpu,
+transformers 4.57.6, float32, package API with the notebook defaults) — not clean-runtime evidence and not a run of the
+notebook blob; the hosted run of the new blob must reproduce it.
+
+| Config | Trainable blocks | Trainable parameters | ep 0 | ep 1 | ep 2 | ep 3 | ep 4 | ep 5 | ep 6 | ep 7 | ep 8 | Best epoch | Best score |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| G1 | 0 | 4,199,697 | 0.6202 | 0.6266 | 0.6324 | 0.6366 | 0.6401 | 0.6430 | 0.6439 | 0.6470 | 0.6478 | 8 | 0.6478 |
+| G2 | 2 | 18,376,977 | 0.6202 | 0.6696 | 0.6938 | 0.7067 | 0.7112 | 0.7142 | 0.7183 | 0.7168 | 0.7191 | 8 | 0.7191 |
+| G3 | 4 | 32,552,721 | 0.6202 | 0.7223 | 0.7393 | 0.7426 | 0.7432 | 0.7437 | 0.7462 | 0.7419 | 0.7473 | 8 | 0.7473 |
+
+Selection: **G3** (G3, head and four blocks); eligible ['G1', 'G2', 'G3']. Test scored once for it: PCK 0.7413 /
+OKS 0.6948 (frozen 0.5968 / 0.5738); clean counterparts 0.9569 / 0.9397 ->
+0.9584 / 0.9388. Grid wall time on this CPU 22.9 min; estimated about 4 min on a T4
+from the previous revision's T4 timings (0.022 s per scored person, about 49 s of training for one G2 run; G1 and G3 assumed 0.6x and 1.4x of it) — an estimate, not a measurement.
+
+Superseded development runs (not selection evidence): the recipe probes listed in `MODEL_CARD.md` (head only at 64 px,
+two blocks at 32 px, four blocks at 32 px) were scored on test before the earlier two-block default was fixed.
+
 ## Current status
+
+**2026-10-17 row-110 review fixes (VTP-M5, VTP-M6, VTP-m3..m5):** the notebook blob changes, so it is **Candidate** again (REL14) until a hosted one-pass run of the new blob is recorded; the quoted numbers come from the CPU development run named in the recipe-selection section and must be refreshed from that hosted run (REL13). Earlier entries below describe earlier blobs.
 
 **Candidate.** The 2026-09-20 Kaggle T4 run of `29c1dde` / blob `050796f8` needed a manual restart after the install cell, so it is not a one-pass `Run all` and not promotion evidence (review finding VTP-M1), so the Release-grade label that rested on it is withdrawn. For the 2026-10-05 review-fix revision, the current blob `49fc2c05a6dd` (commit `bbd073c`) completed one pass with no restart and 0 errors on a fresh Colab Tesla T4 on 2026-10-09 (Colab CLI sequential execution, 13/13 code cells, 319.8 s; isolated `uv` environment, 48 locked packages including scipy for the ViTPose processor; small-person PCK frozen 0.598 / adapted 0.718, OKS 0.564 / 0.681, clean PCK 0.957 / 0.959, clean OKS 0.94 / 0.93; reload parity 8/8). The REL12 BYOD journeys have not been run on a hosted runtime; until they are, the status stays Candidate. Any later change to the carried modules or to the notebook produces a new blob that needs its own recorded run.

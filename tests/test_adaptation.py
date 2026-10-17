@@ -177,11 +177,28 @@ def test_degrade_scales_image_box_and_joints_together():
 
 
 def test_pins_categories_and_split_sizes():
-    assert len(SAMPLE_IMAGES) == sm.CORPUS_IMAGES == 300 and sum(len(e[7]) for e in SAMPLE_IMAGES) == sm.CORPUS_PERSONS == 498
-    assert sum(e[1] for e in SAMPLE_IMAGES) == sm.CORPUS_BYTES and all(len(e[2]) == 64 and e[5] in (4, 5) for e in SAMPLE_IMAGES)
-    assert all(len(person[2].split()) == 51 for e in SAMPLE_IMAGES for person in e[7])
+    extra = sm.VALIDATION_EXTRA_IMAGES
+    assert len(SAMPLE_IMAGES) == sm.SPLIT_IMAGES == 300 and sum(len(e[7]) for e in SAMPLE_IMAGES) == 498
+    assert len(extra) == sm.VALIDATION_EXTRA_PHOTOGRAPHS == 65 and sum(len(e[7]) for e in extra) == 96
+    pinned = SAMPLE_IMAGES + extra
+    assert len(pinned) == sm.CORPUS_IMAGES == 365 and sum(len(e[7]) for e in pinned) == sm.CORPUS_PERSONS == 594
+    assert len({e[0] for e in pinned}) == 365  # the validation-only photographs are not in the 300-photograph draw
+    assert sum(e[1] for e in pinned) == sm.CORPUS_BYTES and all(len(e[2]) == 64 and e[5] in (4, 5) for e in pinned)
+    assert all(len(person[2].split()) == 51 for e in pinned for person in e[7])
     assert category_for(17) == "full" and category_for(15) == "partial" and category_for(12) == "sparse"
     assert sum(SAMPLE_SPLIT.values()) == 300
+
+
+def test_validation_only_photographs_join_validation_and_leave_train_and_test_unchanged():
+    core = SAMPLE_IMAGES[:12]
+    extra = sm.VALIDATION_EXTRA_IMAGES[:2]
+    records = [{"image_id": e[0], "id": f"r{e[0]}"} for e in core + extra]
+    sizes = {"train": 8, "validation": 2, "test": 2}
+    with_extra = build_sample_dataset(records, sizes=sizes)
+    without = build_sample_dataset(records[: len(core)], sizes=sizes)
+    assert with_extra["train"] == without["train"] and with_extra["test"] == without["test"]
+    assert with_extra["validation"][: len(without["validation"])] == without["validation"]
+    assert {r["image_id"] for r in with_extra["validation"]} - {r["image_id"] for r in without["validation"]} == {e[0] for e in extra}
 
 
 def _fake_photo(entry):
@@ -218,10 +235,11 @@ def test_read_corpus_builds_degraded_records_from_verified_bytes():
 
 def test_default_draw_matches_the_pinned_digest_when_the_photos_are_cached():
     cached = sm.DEFAULT_CACHE_DIR
-    if not all((cached / f"{e[0]:012d}.jpg").is_file() for e in SAMPLE_IMAGES):
+    if not all((cached / f"{e[0]:012d}.jpg").is_file() for e in SAMPLE_IMAGES + sm.VALIDATION_EXTRA_IMAGES):
         pytest.skip("COCO photographs not cached")
     splits = build_sample_dataset(read_corpus(fetch_corpus(cache_dir=cached)))
-    assert {k: len({r["image_id"] for r in v}) for k, v in splits.items()} == SAMPLE_SPLIT
+    expected = {**SAMPLE_SPLIT, "validation": SAMPLE_SPLIT["validation"] + sm.VALIDATION_EXTRA_PHOTOGRAPHS}
+    assert {k: len({r["image_id"] for r in v}) for k, v in splits.items()} == expected
     assert check_split_disjoint(splits)
     assert dataset_digest([r for part in splits.values() for r in part]) == sm.SAMPLE_DIGEST
 

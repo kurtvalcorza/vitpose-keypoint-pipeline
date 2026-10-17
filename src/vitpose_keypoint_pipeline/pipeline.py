@@ -105,6 +105,10 @@ MIN_SCORED_RECORDS = 50  # below this a scored set is labelled a small sample
 MAX_EVAL_RECORDS = 5_000
 MAX_TRAINABLE_BLOCKS = 12
 HEATMAP_SIGMA = 2.0  # heatmap pixels; the ViTPose/mmpose target Gaussian
+# The recipe grid, fixed before any grid score was read (review finding VTP-M6): the task is fixed (40-px persons, JPEG
+# quality 30) and so are lr 5e-5, batch 8, 8 epochs, split seed 42 and adapt seed 0; only the trainable scope varies.
+RECIPE_GRID = (("G1", 0), ("G2", 2), ("G3", 4))  # (name, trainable encoder blocks besides the heatmap head)
+RECIPE_MARGIN = 0.01  # a larger config must beat a smaller one (and any config the frozen model) by more than this
 
 
 def _sha256(path: Path) -> str:
@@ -492,7 +496,11 @@ def _check_artifact_manifest(manifest: Mapping[str, Any], artifact_dir: Path, ba
 
 def _heatmap_targets(record: Mapping[str, Any], crop: tuple[int, int], heatmap: tuple[int, int]) -> tuple[Any, Any]:
     """Gaussian heatmap targets (17, H, W) and per-joint weights (17,) for a record in the processor's crop frame:
-    the same centre/scale/warp the processor applies to the image, then the heatmap stride."""
+    the same centre/scale/warp the processor applies to the image, then the heatmap stride.
+
+    The crop-to-heatmap mapping is the UDP one the pinned processor decodes with (`transform_preds`: heatmap pixel
+    ``h`` -> crop ``h * (crop - 1) / (heatmap - 1)``), so a target encoded here decodes back to its joint exactly
+    (review finding VTP-M5); ``crop / heatmap`` would shift every target by up to half a crop pixel."""
     import numpy as np
     from transformers.models.vitpose.image_processing_vitpose import box_to_center_and_scale, get_warp_matrix
 
@@ -501,7 +509,7 @@ def _heatmap_targets(record: Mapping[str, Any], crop: tuple[int, int], heatmap: 
     x0, y0, x1, y1 = record["box"]
     center, scale = box_to_center_and_scale(np.array([x0, y0, x1 - x0, y1 - y0], dtype=np.float32), image_width=crop_w, image_height=crop_h)
     matrix = get_warp_matrix(0.0, center * 2.0, np.array([crop_w, crop_h]) - 1.0, scale * 200.0)
-    stride_x, stride_y = crop_w / hm_w, crop_h / hm_h
+    stride_x, stride_y = (crop_w - 1.0) / (hm_w - 1.0), (crop_h - 1.0) / (hm_h - 1.0)
     targets = np.zeros((len(KEYPOINT_NAMES), hm_h, hm_w), dtype=np.float32)
     weights = np.zeros(len(KEYPOINT_NAMES), dtype=np.float32)
     ys, xs = np.mgrid[0:hm_h, 0:hm_w]
@@ -516,6 +524,33 @@ def _heatmap_targets(record: Mapping[str, Any], crop: tuple[int, int], heatmap: 
         targets[index] = np.exp(-((xs - cx) ** 2 + (ys - cy) ** 2) / (2.0 * HEATMAP_SIGMA**2))
         weights[index] = 1.0
     return targets, weights
+
+
+def select_recipe(
+    results: Sequence[Mapping[str, Any]], frozen_score: float, *, margin: float = RECIPE_MARGIN
+) -> dict[str, Any]:
+    """Apply the pre-registered recipe rule to grid results ``[{"name", "trainable_blocks", "best_score"}, ...]``
+    (each config's best-epoch validation score, the mean of validation PCK and OKS) and the frozen model's epoch-0
+    validation score. Only configs that beat the frozen score by more than `margin` are eligible; if none is, the frozen
+    model is the result. Among the eligible ones, taken in order of trainable blocks, a larger config replaces the
+    current pick only if it beats it by more than `margin`. Test scores never enter."""
+    rows = sorted(({**r, "best_score": float(r["best_score"])} for r in results), key=lambda r: int(r["trainable_blocks"]))
+    if not rows:
+        raise ValueError("select_recipe needs at least one grid result")
+    eligible = [r for r in rows if r["best_score"] > float(frozen_score) + margin]
+    chosen = None
+    for row in eligible:
+        if chosen is None or row["best_score"] > chosen["best_score"] + margin:
+            chosen = row
+    return {
+        "chosen": "frozen" if chosen is None else chosen["name"],
+        "trainable_blocks": None if chosen is None else int(chosen["trainable_blocks"]),
+        "frozen_score": float(frozen_score),
+        "margin": margin,
+        "eligible": [r["name"] for r in eligible],
+        "rule": f"eligible = best-epoch validation score > frozen epoch-0 score + {margin}; none eligible -> frozen; "
+        f"among eligible, in order of trainable blocks, a larger config wins only by more than {margin}",
+    }
 
 
 @dataclass

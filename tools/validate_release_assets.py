@@ -71,13 +71,14 @@ CODE_MARKERS = (
     "frozen_test = pipe.evaluate(test_records)",
     "frozen_clean = pipe.evaluate(clean_test) if clean_test is not None else None",
     "frozen_verdict = ",
-    "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=TRAINABLE_BLOCKS, progress=report)",
-    "adapted_test = pipe.evaluate(test_records)",
+    "result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=blocks, seed=ADAPT_SEED, progress=report)",
+    "recipe_selection = select_recipe(grid_rows, frozen_val_score)",
+    "adapted_test = frozen_test if adapt_result is None else pipe.evaluate(test_records)",
     "adapted_val = pipe.evaluate(val_records)",
     "comparison['verdicts'] = ",
     "adapted_scene_result, adapted_scene = estimate_scene(pipe, 'adapted')",
     "frozen_base = VitPoseKeypointPipeline.from_pretrained(weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
-    "pipe.save_artifact(artifact_dir, metadata={'tutorial': 'vitpose_keypoint', 'data_source': data_source})",
+    "pipe.save_artifact(artifact_dir, metadata={'tutorial': 'vitpose_keypoint', 'data_source': data_source, 'recipe': recipe_selection['chosen']})",
     "reloaded = VitPoseKeypointPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)",
     "assert parity['identical_persons'] == parity['of']",
     # Section 10 (optional, off by default): its own pipeline, default exports checked unchanged (VTP-M3)
@@ -108,7 +109,7 @@ MARKDOWN_MARKERS = (
     "**distant, low-quality person**",
     "**40 px tall**",
     "**0.957**",
-    "**0.598**",
+    "**0.597**",
     "**box-only baselines**",
     "**PCK**",
     "**mean OKS**",
@@ -123,7 +124,7 @@ MARKDOWN_MARKERS = (
     "## 4. COCO persons, the small-person degradation and the split",
     "## 5. Estimate a synthetic drawing through the two-stage inference contract",
     "## 6. Baselines, the frozen model on the small persons — and on the clean ones",
-    "## 7. Bounded fine-tuning of the heatmap head and the last encoder blocks",
+    "## 7. Bounded fine-tuning: the pre-registered recipe grid",
     "## 8. Held-out evaluation",
     "## 9. Look at the skeletons, export the adapter and reload it",
     "**Degradation:**",
@@ -163,7 +164,7 @@ INSTALL_CELL_MARKER = "# dimer: kernel cell"
 # Specification 2.0; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SPEC = "2.2"
+NOTEBOOK_SPEC = "2.5"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
@@ -238,7 +239,7 @@ COMMON_MARKDOWN_MARKERS = (
     "without the repository being",
     "It does **not** establish benchmark superiority",
     "## References",
-    f"- Repository model card: https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
+    f"model card https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
 )
 # Patterns that must never appear in tutorial code (comment-stripped), in any cell.
 FORBIDDEN_PATTERNS = (

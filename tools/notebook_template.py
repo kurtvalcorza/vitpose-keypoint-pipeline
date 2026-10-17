@@ -43,7 +43,7 @@ TEMPLATE = {
     "external_access": (
         "the Hugging Face Hub, to fetch the pinned `{MODEL_ID}` snapshot and the pinned detector snapshot (~{total_mb:.0f} MB "
         "together) at their pinned revisions (`{MODEL_REVISION:.12}…` for the pose model), and "
-        "`images.cocodataset.org`, for the 300 pinned photographs named in the data bullet above — over plain HTTP, so "
+        "`images.cocodataset.org`, for the 365 pinned photographs named in the data bullet above — over plain HTTP, so "
         "integrity rests on the per-file byte size and SHA-256, which every file is checked against. No credentials are "
         "required; nothing is installed from this repository."
     ),
@@ -97,19 +97,19 @@ TEMPLATE = {
         "Selecting **Run all** in a fresh supported runtime builds an isolated environment from the hash-locked pins (nothing is "
         "installed into the notebook's own Python, so no restart is needed and Run all completes in one pass), stages and digest-verifies the "
         "pinned `usyd-community/vitpose-base` and `PekingU/rtdetr_r50vd` snapshots (a 360 MB and a 172 MB `model.safetensors`; "
-        "no pickle is opened anywhere), fetches the 300 pinned COCO val2017 photographs from the COCO image host (about 52 MB, "
-        "each refused on any byte-size or SHA-256 mismatch), turns their 498 labelled persons into the stated small-person "
+        "no pickle is opened anywhere), fetches the 365 pinned COCO val2017 photographs from the COCO image host (about 63 MB, "
+        "each refused on any byte-size or SHA-256 mismatch), turns their 594 labelled persons into the stated small-person "
         "input (the whole image downscaled so the person box is 40 px tall, then JPEG at quality 30) with the boxes and joints "
-        "scaled to match, splits them by image into 180 / 45 / 75 photographs (290 / 72 / 136 persons), estimates a synthetic "
+        "scaled to match, splits 300 of them by image into 180 / 45 / 75 photographs and adds the other 65 to validation (290 / 168 / 136 persons on 180 / 110 / 75 photographs), estimates a synthetic "
         "drawing through the two-stage inference contract with an input manifest and a rejection probe, measures the frozen "
         "model's PCK and mean OKS over the 136 held-out persons beside the box-centre and mean-pose baselines and against the "
-        "same persons at full resolution, runs a bounded fine-tuning of the heatmap head and the last two encoder blocks with "
-        "the heatmap mean-squared error and epoch selection on the mean validation PCK and OKS, scores the held-out persons "
+        "same persons at full resolution, runs the pre-registered recipe grid (the heatmap head alone, with the last two and with the last four encoder blocks) with "
+        "the heatmap mean-squared error and epoch selection on the mean validation PCK and OKS, chooses the configuration on validation by a rule fixed in advance, scores the held-out persons once for it "
         "again per category, re-estimates the drawing and four held-out persons with the adapted model, exports the adapter as "
         "safetensors with a manifest, and reloads that artifact into a fresh pipeline to verify keypoint parity. The default "
         "path needs no repository clone, no DIMER worker or service, no credential, no upload dialog and no configuration edit "
-        "(NOTEBOOK_SPEC 2.0 §5). On an RTX 5070 Ti the whole path took under three minutes after the downloads; a CUDA runtime "
-        "is used automatically when present, and on a 2-vCPU hosted runtime expect the eight epochs to take half an hour or more."
+        "(NOTEBOOK_SPEC 2.5 §3.1, §5). On a T4 the grid is estimated at about 4 minutes (an estimate from the Colab T4 run of the previous revision (blob 49fc2c05), not a measurement); a CUDA runtime "
+        "is used automatically when present, and on a 2-vCPU hosted runtime expect the three fine-tunes to take well over an hour."
     ),
     "byod": (
         "After the tutorial workflow completes, set `USE_BYOD = True` in Section 4 and either set `BYOD_PATH` to a zip or folder "
@@ -122,7 +122,7 @@ TEMPLATE = {
         "cells as the COCO sample. Uploaded files stay inside this runtime. BYOD is optional and never part of the default path."
     ),
     "intro": (
-        "ViTPose is a **top-down** pose estimator: it needs a person box first. Stage 1 runs the RT-DETR R50-VD detector "
+        "ViTPose [1] is a **top-down** pose estimator: it needs a person box first. Stage 1 runs the RT-DETR R50-VD detector [2] "
         "(the same checkpoint the sibling `rtdetr-detection-pipeline` wraps) over the whole image and keeps the boxes "
         "labelled `person` above a threshold; stage 2 affine-warps each box to a 192×256 crop, runs a plain ViT-B "
         "backbone with a heatmap decoder (89,994,513 parameters, of which the head is 4,199,697; published under the "
@@ -131,22 +131,23 @@ TEMPLATE = {
         "signal, not a calibrated probability).\n\n"
         "What this notebook adds to inference is **adaptation with labelled persons** under a stated input shift. "
         "ViTPose was trained on COCO persons at the crop resolution a 256-px box gives it; on the same photographs the "
-        "frozen model reaches a PCK of **0.957** (the build record's figure on the 136 held-out persons), so there is "
+        "frozen model reaches a PCK of **0.957** on the 136 held-out persons (the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook)), so there is "
         "nothing honest to gain there. The input the adaptation is about is the **distant, low-quality person** a "
         "surveillance camera or a wide shot hands a pose estimator: each photograph is downscaled so the person box is "
-        "**40 px tall** and re-encoded as JPEG at quality 30, and on that input the frozen model drops to **0.598** — "
-        "not far above the 0.472 that placing every joint at its mean position in the box achieves with no model at all. "
-        "So the honest question is narrow: does a bounded fine-tuning of the heatmap head and the last two encoder blocks on "
+        "**40 px tall** and re-encoded as JPEG at quality 30, and on that input the frozen model drops to **0.597** — "
+        "not far above the 0.469 that placing every joint at its mean position in the box achieves with no model at all. "
+        "So the honest question is narrow: does a bounded fine-tuning — of the heatmap head alone or with the last two or four encoder blocks, chosen on validation by a rule fixed in advance — on "
         "290 such persons move the held-out **PCK** and **mean OKS** on an image-disjoint test split, per category, past the "
         "two **box-only baselines** — while the same model still scores the clean, full-resolution persons as before? "
-        "Nothing here is a claim about your cameras: it is one seeded split of one sample under one stated degradation.\n\n"
-        "**Snapshot note:** both pinned revisions ship `model.safetensors` (4-file manifests) — no pickle is opened anywhere "
+        "Nothing here is a claim about your cameras: it is one seeded split of one sample under one stated degradation.\n\n**Pre-registered recipe (fixed before any grid score was read).** The task is fixed in advance and is not tuned: each person downscaled to a 40-px box and re-encoded as JPEG at quality 30. So is the training: learning rate 5e-5, batch 8, eight epochs, split seed 42, fine-tuning seed 0. Section 7 trains three configurations — **G1** the heatmap head only, **G2** the head and the last two encoder blocks, **G3** the head and the last four — and each keeps its best epoch by the mean of validation PCK and OKS. The rule: a configuration counts only if its best validation score beats the frozen model's (epoch 0) by more than 0.01, and if none does, the frozen model is the result; among those that count, a configuration with more trainable blocks replaces a smaller one only if it beats it by more than 0.01. The test persons are scored **once**, for the chosen configuration, after the choice. (An earlier revision fixed two blocks at 40 px after reading test scores of development runs; those runs are superseded — see **What did not work**.)\n\n**Data overlap.** The photographs come from COCO val2017 [3]. ViTPose-base was trained on COCO train2017, not val2017, but the upstream training configuration [7] used val2017 to select its released checkpoint (`save_best='AP'`) and to report results. None of these photographs was trained on, yet the frozen model's clean scores are mildly optimistic as an estimate on unseen photographs; the degraded-input scores and the adaptation gain are much less affected.\n\n"
+        "**Snapshot note:** both pinned revisions [5], [6] ship `model.safetensors` (4-file manifests) — no pickle is opened anywhere "
         "in this notebook. Section 3 stages and digest-verifies both before either processor or model is constructed."
     ),
     "guided": {
         "opening": [
+            "> **⚠️ Notice.** For research, training and evaluation only. Not validated for production,\n> clinical, diagnostic or safety-critical use. Running this notebook downloads third-party\n> model weights and datasets under their own licenses (see the model card) and uses compute\n> on your own Colab or Kaggle account. Data you bring stays in your runtime, and you are\n> responsible for having the right to use it. Results here are tutorial evidence, not\n> benchmarks. Everything is provided \"as is\", without warranty of any kind. To the maximum\n> extent permitted by law, the maintainers and the DIMER platform accept no liability for\n> its use. Pose estimation of people is not validated for, and must not be used for,\n> surveillance, tracking, identification or profiling of people, or workplace-safety decisions\n> (see the model card's prohibited uses).",
             (
-                "**Who this notebook is for.** A learner who knows basic Python, has used Colab or Jupyter, and wants to see how a pretrained pose estimator behaves under an input shift — small, low-quality persons — and what a bounded fine-tune recovers, read honestly against box-only baselines and the clean input. No prior experience with pose estimation or fine-tuning is assumed; each term is explained where it first matters and again in the **Glossary** at the end. A GPU is strongly recommended: on CPU the fine-tune takes half an hour or more.\n\n**Input → Model → Output.**\n\n| | Two-stage pose estimation | Bounded fine-tuning |\n|---|---|---|\n| Input | one photograph (16..4,096 px); person boxes from the detector or from you | labelled persons: 290 training and 72 validation in the sample, each person downscaled to a 40-px box and JPEG-30, split by photograph |\n| Model | RT-DETR finds `person` boxes; ViTPose warps each box to 192 × 256 and reads 17 COCO joints from 64 × 48 heatmaps | the heatmap head and the last two encoder blocks trained on the joint-weighted heatmap MSE; validation PCK + OKS chooses the epoch |\n| Output | 17 joints per box with heatmap-maximum scores — a ranking signal, not a probability | a safetensors adapter, and held-out PCK and mean OKS on the small persons and on their clean counterparts |\n\n**How to use this notebook.** Choose a runtime (a GPU is strongly recommended), then **Runtime → Run all**. Run all completes in one pass: Section 1 installs nothing into the notebook's own Python, so no restart is needed. Sections 1–3 are **infrastructure** — the isolated environment, the carried package and the two model snapshots — and their cells are collapsed; you may run them without studying them. The learning path starts in Section 4. Form fields (`# @param`) are the only values meant to be edited, and the defaults reproduce the recorded run. Before each principal result the notebook asks you to **Predict**; after it come **What to notice** and a collapsible **Check your reasoning** with a worked answer that names the run it quotes — the Kaggle T4 release run of 20 September 2026 or the build workstation's record (RTX 5070 Ti). Section 10 is a **change-one-thing experiment**, off by default. **Troubleshooting**, a **Glossary** and a **Conclusion** template are at the end. Writing your predictions down is optional.\n\n**Roadmap:** 1–3 infrastructure → 4 COCO persons, the small-person degradation and an image-level split *(evaluation practice)* → 5 the two-stage inference contract on a drawing *(core concept: top-down pose)* → 6 box-only baselines and the frozen model, small and clean *(evaluation practice)* → 7 bounded fine-tuning *(core concept)* → 8 held-out evaluation → 9 skeletons, export and reload *(engineering)* → 10 change one thing (optional) → conclude."
+                "**Who this notebook is for.** A learner who knows basic Python, has used Colab or Jupyter, and wants to see how a pretrained pose estimator behaves under an input shift — small, low-quality persons — and what a bounded fine-tune recovers, read honestly against box-only baselines and the clean input. No prior experience with pose estimation or fine-tuning is assumed; each term is explained where it first matters and again in the **Glossary** at the end. A GPU is strongly recommended: on CPU the three fine-tunes of the recipe grid take well over an hour.\n\n**Input → Model → Output.**\n\n| | Two-stage pose estimation | Bounded fine-tuning |\n|---|---|---|\n| Input | one photograph (16..4,096 px); person boxes from the detector or from you | labelled persons: 290 training and 168 validation in the sample, each person downscaled to a 40-px box and JPEG-30, split by photograph |\n| Model | RT-DETR finds `person` boxes; ViTPose warps each box to 192 × 256 and reads 17 COCO joints from 64 × 48 heatmaps | the heatmap head alone, or with the last two or four encoder blocks, trained on the joint-weighted heatmap MSE; validation PCK + OKS chooses the epoch and, by a pre-registered rule, the configuration |\n| Output | 17 joints per box with heatmap-maximum scores — a ranking signal, not a probability | a safetensors adapter, and held-out PCK and mean OKS on the small persons and on their clean counterparts |\n\n**How to use this notebook.** Choose a runtime (a GPU is strongly recommended), then **Runtime → Run all**. Run all completes in one pass: Section 1 installs nothing into the notebook's own Python, so no restart is needed. Sections 1–3 are **infrastructure** — the isolated environment, the carried package and the two model snapshots — and their cells are collapsed; you may run them without studying them. The learning path starts in Section 4. Form fields (`# @param`) are the only values meant to be edited, and the defaults reproduce the recorded run. Before each principal result the notebook asks you to **Predict**; after it come **What to notice** and a collapsible **Check your reasoning** with a worked answer that names the run it quotes — the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook); quotes are refreshed from the first hosted run of this revision. Section 10 is a **change-one-thing experiment**, off by default. **Troubleshooting**, a **Glossary** and a **Conclusion** template are at the end. Writing your predictions down is optional.\n\n**Roadmap:** 1–3 infrastructure → 4 COCO persons, the small-person degradation and an image-level split *(evaluation practice)* → 5 the two-stage inference contract on a drawing *(core concept: top-down pose)* → 6 box-only baselines and the frozen model, small and clean *(evaluation practice)* → 7 the pre-registered recipe grid *(core concept)* → 8 held-out evaluation → 9 skeletons, export and reload *(engineering)* → 10 change one thing (optional) → conclude."
             )
         ]
     },
@@ -166,34 +167,34 @@ TEMPLATE = {
         "3-D pose, tracking across frames, hand, face or whole-body keypoints beyond the 17 COCO joints, fine-tuning of the "
         "detector or of the patch embedding and earlier encoder blocks, COCO OKS-based average precision proper (only PCK and "
         "the per-joint OKS kernel averaged over labelled joints are computed here — no AP over thresholds), evaluation on the "
-        "full COCO validation set or any benchmark (only one seeded 498-person sample from 300 of its images is scored), and "
+        "full COCO validation set or any benchmark (only one seeded 594-person sample from 365 of its images is scored), and "
         "any claim that a 40-px JPEG person stands in for your camera's degradation. The repository exposes none of these."
     ),
     "prerequisites": [
         "- **Learner:** basic Python and Colab or Jupyter familiarity; no prior experience with pose estimation or fine-tuning. The notebook explains top-down pose, heatmaps, PCK, OKS, the box-only baselines, the clean counterparts and the adapter where they are first used; the Glossary repeats them.",
-        "- **Runtime:** a fresh supported **Linux x86_64** runtime (Google Colab, Kaggle or Linux Jupyter); a GPU is strongly recommended for Section 7. Section 1 builds its own Python 3.12.12 environment from a hash-locked list of manylinux wheels, so the kernel's own Python version does not matter and nothing is installed into it. The default path runs on CPU (float32) and uses CUDA automatically when available. Stage 2 costs about 0.15 s per person on the build workstation's CPU and a few milliseconds on a GPU; the build record measured 1.1 s to prepare the 290 training crops and 31.5 s for the eight epochs with per-epoch validation scoring on an RTX 5070 Ti, and the whole default path took about two and a half minutes there with both snapshots and the photographs already cached. A 2-vCPU hosted runtime will take much longer (ViT-B forward and backward on 290 crops per epoch). The pinned `torch==2.14.0` install and the two checkpoints (360 MB ViTPose, 172 MB RT-DETR) are the large downloads of the run; the photographs are about 52 MB.",
+        "- **Runtime:** a fresh supported **Linux x86_64** runtime (Google Colab, Kaggle or Linux Jupyter); a GPU is strongly recommended for Section 7. Section 1 builds its own Python 3.12.12 environment from a hash-locked list of manylinux wheels, so the kernel's own Python version does not matter and nothing is installed into it. The default path runs on CPU (float32) and uses CUDA automatically when available. In the Colab T4 run of the previous revision (blob 49fc2c05) scoring the 136 test persons took 3.0 s and one eight-epoch fine-tune with per-epoch validation took 62.8 s, and the whole run 320 s; this revision trains three configurations and scores a validation split more than twice as large, estimated at about 4 minutes more on a T4 (not yet measured). In the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook) the grid took 23 minutes on a CPU. A 2-vCPU hosted runtime will take much longer (ViT-B forward and backward on 290 crops per epoch). The pinned `torch==2.14.0` install and the two checkpoints (360 MB ViTPose, 172 MB RT-DETR) are the large downloads of the run; the photographs are about 63 MB.",
         "- **Knowledge:** basic Python, NumPy and PIL; what a bounding box in xyxy pixel coordinates is; what a keypoint heatmap is and why its maximum is not a probability; what PCK and OKS measure and why a self-drawn figure is a plumbing check while a held-out split under a stated degradation is a measurement of that degradation only.",
         "- **Data contract:** records are `{id, image, box, keypoints, category?}` — `image` a PIL image (or a file decodable by Pillow) with sides within 16..4096 px, `box` one `[x0, y0, x1, y1]` person box inside it, `keypoints` a mapping from COCO joint name to `[x, y]` for every labelled joint (at least 12 of the 17), an optional `category` of at most 32 characters. Ids match `[A-Za-z0-9_.:-]{1,64}` and are unique; a training split needs 8..5,000 records and validation and test at least one each, so with the default 15 % + 20 % image hold-out the effective BYOD minimum is **12 persons on 12 single-person images** (`min_byod_records()`); splitting keeps every image (by decoded pixels) in one split and every person with its image. BYOD accepts one zip (or directory) of photographs plus a `keypoints.csv` in the layout named above.",
         "- **Validation is structural, not semantic:** every image is decoded, every box and joint checked to lie inside it, but nothing checks that a joint is where its name says — a mislabelled set is fine-tuned on without complaint.",
         "- **Privacy:** Do not upload confidential or restricted data (photographs of identifiable people you have no consent to process) to a hosted runtime unless you are authorized to process it there. The default path uploads nothing.",
-        "- **External access (data):** besides the two model snapshots, the default path fetches 300 JPEG files from `http://images.cocodataset.org/val2017/<id>.jpg` (about 52 MB in total), each pinned by byte size and SHA-256 in the carried `samples.py` and refused on any mismatch; every photograph's Flickr page and licence (CC BY 2.0 or CC BY-SA 2.0 — COCO licence ids 4 and 5 only) are kept in its record, and the 2017 keypoint annotations it carries are CC BY 4.0 (COCO Consortium). Nothing is redistributed by this repository.",
+        "- **External access (data):** besides the two model snapshots, the default path fetches 365 JPEG files from `http://images.cocodataset.org/val2017/<id>.jpg` (about 63 MB in total), each pinned by byte size and SHA-256 in the carried `samples.py` and refused on any mismatch; every photograph's Flickr page and licence (CC BY 2.0 or CC BY-SA 2.0 — COCO licence ids 4 and 5 only) are kept in its record, and the 2017 keypoint annotations it carries are CC BY 4.0 (COCO Consortium). Nothing is redistributed by this repository.",
     ],
     "cells": [
         {
             "md": (
                 "## 4. COCO persons, the small-person degradation and the split\n\n"
-                "`fetch_corpus` returns the 300 pinned photographs from the cache under `weights/coco-val-persons/` or the "
+                "`fetch_corpus` returns the 365 pinned photographs from the cache under `weights/coco-val-persons/` or the "
                 "COCO image host — every cached file is re-hashed and every fetched file refused on any byte-size or SHA-256 "
                 "mismatch — and `read_corpus` turns each labelled person into a record: `degrade` downscales the whole "
                 "photograph (bicubic) so the person's box is `TARGET_HEIGHT` px tall, re-encodes it as JPEG at `JPEG_QUALITY`, "
-                "and scales the box and the labelled joints by the same factor; the record's `category` says how many of the "
+                "and scales the box (continuous) by the same factor and every labelled joint as the pixel index it is, `(x + 0.5)·s − 0.5`, so a label stays on the image content it marks; the record's `category` says how many of the "
                 "17 joints COCO labelled (`full` 16–17, `partial` 14–15, `sparse` 12–13 — a proxy for occlusion and "
-                "truncation). `build_sample_dataset` draws a seeded image-level split (180 / 45 / 75 photographs; every person "
-                "follows its photograph), and `read_corpus(..., target_height=None)` builds the **clean counterparts** of the "
+                "truncation). `build_sample_dataset` draws a seeded image-level split of 300 photographs (180 / 45 / 75; every person "
+                "follows its photograph) and adds the 65 other qualifying photographs to validation only — a validation split larger than test, so the 0.01 margin of Section 7's rule is not lost in noise — and `read_corpus(..., target_height=None)` builds the **clean counterparts** of the "
                 "test persons — the same photographs unchanged — for Section 6. `validate_dataset` then checks every record "
                 "against the contract, `check_split_disjoint` asserts no photograph (by decoded-pixel digest) is shared, and "
-                "the training split's summary table is written to `outputs/{stem}_train.csv`.\n\n"
-                "Look for: 300 photographs and 498 persons, boxes about 40 px tall after degradation, three categories, three "
+                "the training split's summary table is written to `outputs/{stem}_train.csv`.\n\n*Data context.* The photographs are COCO val2017 [3] under their Flickr licences; ViTPose-base was trained on train2017, while val2017 picked its released checkpoint upstream [7] — so no photograph here was trained on, but the frozen clean scores are mildly optimistic.\n\n"
+                "Look for: 365 photographs and 594 persons (300 in the draw plus 65 validation-only), boxes about 40 px tall after degradation, three categories, three "
                 "digests, and four refusal probes — a duplicate id, a joint outside its image, a person with too few labelled "
                 "joints, and a dataset too small to use — each rejected before the model does anything.\n\n"
                 "*Evaluation practice.* **Bring your own data (optional):** set `USE_BYOD = True` and either `BYOD_PATH` (a zip or "
@@ -219,28 +220,43 @@ TEMPLATE = {
                 "restored_tensors = pipe.restore_base()\n"
                 "if had_adapter or restored_tensors:\n"
                 "    print({{'restored_pinned_base': len(restored_tensors), 'note': 'the fine-tuned head and blocks were put back to the checkpoint; Sections 5-7 start from it again'}})\n"
+                "class ByodRefusal(ValueError):\n"
+                "    \"\"\"A BYOD input this notebook refuses: shown as one message, without a traceback.\"\"\"\n"
+                "    dimer_refusal = True\n"
+                "\n"
+                "    def _render_traceback_(self):\n"
+                "        return [str(self)]\n"
+                "\n"
+                "\n"
                 "if USE_BYOD:\n"
+                "    # A refused input invalidates the active run (the earlier split and results are dropped, so later cells cannot read\n"
+                "    # them as if they were this upload's) but deletes nothing already written to outputs/.\n"
+                "    for stale in ('splits', 'train_records', 'val_records', 'test_records', 'clean_test', 'adapt_result', 'recipe_selection', 'adapted_test'):\n"
+                "        globals().pop(stale, None)\n"
                 "    if BYOD_PATH.strip():\n"
                 "        byod_zip = Path(BYOD_PATH.strip()).expanduser()\n"
                 "        if not byod_zip.exists():\n"
-                "            raise FileNotFoundError(f'BYOD_PATH {{BYOD_PATH!r}} does not exist (relative paths start at {{Path.cwd()}}): give a .zip or a folder holding keypoints.csv and the photographs.')\n"
+                "            raise ByodRefusal(f'BYOD_PATH {{BYOD_PATH!r}} does not exist (relative paths start at {{Path.cwd()}}): give a .zip or a folder holding keypoints.csv and the photographs, then run this cell again.')\n"
                 "        file_name = byod_zip.name\n"
                 "    else:\n"
                 "        try:\n"
                 "            from google.colab import files\n"
                 "        except ImportError:\n"
-                "            raise RuntimeError('USE_BYOD is True but BYOD_PATH is empty, and the upload dialog exists only in Google Colab: on Kaggle or Jupyter put the zip (or folder) in the runtime and set BYOD_PATH to its path.') from None\n"
+                "            raise ByodRefusal('USE_BYOD is True but BYOD_PATH is empty, and the upload dialog exists only in Google Colab: on Kaggle or Jupyter put the zip (or folder) in the runtime and set BYOD_PATH to its path.') from None\n"
                 "        uploaded = files.upload() or {{}}\n"
                 "        if len(uploaded) != 1:\n"
-                "            raise ValueError(f'Upload exactly one .zip file (received {{len(uploaded)}}; a cancelled dialog sends none): run this cell again.')\n"
+                "            raise ByodRefusal(f'Upload exactly one .zip file (received {{len(uploaded)}}; a cancelled dialog sends none): run this cell again.')\n"
                 "        file_name, payload = next(iter(uploaded.items()))\n"
                 "        if not file_name.lower().endswith('.zip'):\n"
-                "            raise ValueError(f'{{file_name}}: upload one .zip holding keypoints.csv and the photographs.')\n"
+                "            raise ByodRefusal(f'{{file_name}}: upload one .zip holding keypoints.csv and the photographs, then run this cell again.')\n"
                 "        byod_zip = Path('work') / 'byod.zip'\n"
                 "        byod_zip.parent.mkdir(parents=True, exist_ok=True)\n"
                 "        byod_zip.write_bytes(payload)\n"
-                "    records = load_byod_dataset(byod_zip)\n"
-                "    splits = split_dataset(records, seed=SPLIT_SEED)\n"
+                "    try:\n"
+                "        records = load_byod_dataset(byod_zip)\n"
+                "        splits = split_dataset(records, seed=SPLIT_SEED)\n"
+                "    except ValueError as exc:  # the loader's and the splitter's refusals name the file, row and field; anything else keeps its traceback\n"
+                "        raise ByodRefusal(f'BYOD refused ({{file_name}}): {{exc}}. Fix the file and run this cell again; earlier files in outputs/ are kept, but the earlier split is no longer active.') from None\n"
                 "    clean_test = None\n"
                 "    data_source = 'BYOD (' + file_name + ')'\n"
                 "    raw_rows = {{'byod': len(records), 'effective_minimum': min_byod_records()['total']}}\n"
@@ -286,7 +302,7 @@ TEMPLATE = {
         },
         {
             "md": (
-                '**What to notice:** 300 photographs and 498 persons, boxes about 40 px tall, the three categories, the three digests and the four refusals.\n\n<details><summary>Check your reasoning</summary>Persons in one photograph share its lighting, background and compression, and some overlap; split by person, the test set would contain the same photograph as training and the score would measure memory of that image. Keeping every person with its photograph makes the test a question about unseen photographs.</details>'
+                '**What to notice:** 365 photographs and 594 persons, boxes about 40 px tall, the three categories, the three digests and the four refusals.\n\n<details><summary>Check your reasoning</summary>Persons in one photograph share its lighting, background and compression, and some overlap; split by person, the test set would contain the same photograph as training and the score would measure memory of that image. Keeping every person with its photograph makes the test a question about unseen photographs.</details>'
             ),
         },
         {
@@ -380,7 +396,7 @@ TEMPLATE = {
         },
         {
             "md": (
-                "**What to notice:** `stage1_persons`, `box_source`, the joints' mean score and the self-drawn PCK.\n\n<details><summary>Check your reasoning</summary>No: the build record's RT-DETR found no `person` on the cartoon at the default 0.3, so `estimate` used the drawn box as a caller box — and ViTPose still returned 17 joints, matching the self-drawn ones (PCK 1.0). A box with no person in it would also get 17 joints; only the low heatmap scores would say so. This is plumbing evidence, not a measurement.</details>"
+                "**What to notice:** `stage1_persons`, `box_source`, the joints' mean score and the self-drawn PCK.\n\n<details><summary>Check your reasoning</summary>No: in the Colab T4 run of the previous revision (blob 49fc2c05) RT-DETR found no `person` on the cartoon at the default 0.3, so `estimate` used the drawn box as a caller box — and ViTPose still returned 17 joints, matching the self-drawn ones (PCK 1.0). A box with no person in it would also get 17 joints; only the low heatmap scores would say so. This is plumbing evidence, not a measurement.</details>"
             ),
         },
         {
@@ -425,68 +441,87 @@ TEMPLATE = {
         },
         {
             "md": (
-                '**What to notice:** PCK and OKS for the floor, the mean-pose prior and the frozen model, small and clean, and the per-category rows.\n\n<details><summary>Check your reasoning</summary>About a third. In the Kaggle T4 release run (20 September 2026) the frozen model scored PCK 0.957 on the clean persons and 0.598 on the same persons at 40 px (OKS 0.94 and 0.564), against 0.472 for the mean-pose prior and 0.086 for the box centre. On fully labelled small persons it scored 0.604, only a little above the mean-pose prior there: small, fully visible persons are being read largely from the box layout, not from the pixels.</details>'
+                "**What to notice:** PCK and OKS for the floor, the mean-pose prior and the frozen model, small and clean, and the per-category rows.\n\n<details><summary>Check your reasoning</summary>About a third. In the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook) the frozen model scored PCK 0.957 on the clean persons and 0.597 on the same persons at 40 px (OKS 0.940 and 0.574), against 0.469 for the mean-pose prior and 0.084 for the box centre: on small persons a good part of the frozen model's score comes from the box layout, not from the pixels. The clean score is mildly optimistic, because val2017 picked the upstream checkpoint.</details>"
             ),
         },
         {
             "md": (
-                "## 7. Bounded fine-tuning of the heatmap head and the last encoder blocks\n\n"
-                "`pipe.adapt` trains only the heatmap head (two deconvolutions and the final convolution) and the last "
-                "`TRAINABLE_BLOCKS` encoder blocks with the final backbone LayerNorm — 18,376,977 of 89,994,513 parameters for "
-                "two blocks — while the patch embedding, the earlier blocks and the whole detector stay frozen. Every record's "
-                "box is affine-warped to the processor's 192×256 crop exactly as at inference, its labelled joints become "
-                "Gaussian targets (sigma `HEATMAP_SIGMA` = 2) on the 64×48 heatmap grid in the same frame, and the head's "
-                "heatmaps are trained with the **joint-weighted mean-squared error** ViTPose was trained with (unlabelled joints "
-                "carry no weight). AdamW without weight decay at a fixed learning rate, gradient clipping at 1.0, seeded "
-                "shuffling, no scheduler, no augmentation; the head's BatchNorm statistics stay frozen so the adapter is "
-                "parameters-only. Epoch 0 records the frozen model's validation metrics; every epoch is scored on the 72 "
-                "validation persons, and the epoch with the highest **mean of validation PCK and OKS** is kept.\n\n"
-                "Watch the training loss fall from about 0.0028 towards 0.0013 while the validation PCK climbs from about 0.66 "
-                "to 0.74 over eight epochs: the head is learning to read blurred, block-edged limbs it never saw at training "
-                "resolution, which 290 persons are enough to teach. The build record's counter-examples — the head alone, which "
-                "moved PCK by a hundredth, and four blocks at 32-px persons, which peaked and then overfit — are why the "
-                "default is two blocks at 40 px.\n\n"
-                "*Core concept.* Every call to `pipe.adapt` starts from the **pinned base**: tensors an earlier call (or an "
-                "artifact) changed are put back first, so epoch 0 is always the frozen model, a head-only re-run really is head "
-                "only, and re-running Sections 7–9 with a changed field repeats the comparison validly. To compare a change side "
-                "by side without replacing the default exports, use Section 10.\n\n"
-                "**Predict before running:** will validation keep the last epoch, or an earlier one?"
+                "## 7. Bounded fine-tuning: the pre-registered recipe grid\n"
+                "\n"
+                "`pipe.adapt` trains only the heatmap head (two deconvolutions and the final convolution) and the last `trainable_blocks` encoder blocks with the final backbone LayerNorm, while the patch embedding, the earlier blocks and the whole detector stay frozen. Every record's box is affine-warped to the processor's 192×256 crop exactly as at inference, and its labelled joints become Gaussian targets (sigma `HEATMAP_SIGMA` = 2) on the 64×48 heatmap grid in the same frame, encoded with the crop-to-heatmap stride the processor decodes with (`(crop − 1) / (heatmap − 1)`, the unbiased convention ViTPose was trained with [4]), so a target decodes back to its joint exactly. The head's heatmaps are trained with the **joint-weighted mean-squared error** ViTPose was trained with (unlabelled joints carry no weight). AdamW without weight decay at a fixed learning rate, gradient clipping at 1.0, seeded shuffling, no scheduler, no augmentation; the head's BatchNorm statistics stay frozen so the adapter is parameters-only. Epoch 0 records the frozen model's validation metrics; every epoch is scored on the 168 validation persons, and each run keeps the epoch with the highest **mean of validation PCK and OKS**.\n"
+                "\n"
+                "This cell runs the **pre-registered grid** stated at the top of the notebook — G1 (head only, 4,199,697 trainable parameters), G2 (head and two blocks, 18,376,977) and G3 (head and four blocks, 32,552,721) — saves each configuration's best epoch under `work/recipe_grid/`, prints the validation score of every epoch of every configuration (epoch 0 is the frozen model), applies the rule with `select_recipe`, and loads the chosen configuration back from its saved artifact. Test is not read here. `RUN_RECIPE_GRID = False` trains one configuration of your choice (`TRAINABLE_BLOCKS`) instead: a one-off look, not the pre-registered result.\n"
+                "\n"
+                "*Core concept.* Every call to `pipe.adapt` starts from the **pinned base**: tensors an earlier call (or an artifact) changed are put back first, so epoch 0 is always the frozen model and the three configurations start from the same checkpoint. To compare a further change side by side without replacing the default exports, use Section 10.\n"
+                "\n"
+                "**Predict before running:** which configuration will the rule choose, and will it be the one with the highest validation score?"
             ),
             "code": (
-                "EPOCHS = 8  # @param {{type:\"integer\"}}\n"
-                "LEARNING_RATE = 5e-5  # @param {{type:\"number\"}}\n"
-                "BATCH_SIZE = 8  # @param {{type:\"integer\"}}\n"
-                "TRAINABLE_BLOCKS = 2  # @param {{type:\"integer\"}}\n\n\n"
+                "import shutil\n"
+                "\n"
+                "EPOCHS, LEARNING_RATE, BATCH_SIZE, ADAPT_SEED = 8, 5e-5, 8, 0  # fixed in advance with the grid (pre-registered)\n"
+                "RUN_RECIPE_GRID = True  # @param {{type:\"boolean\"}}\n"
+                "TRAINABLE_BLOCKS = 2  # @param {{type:\"integer\"}}\n"
+                "\n"
+                "\n"
                 "def report(entry):\n"
                 "    row = {{'epoch': entry['epoch'], 'train_loss': None if entry['train_loss'] is None else round(entry['train_loss'], 5)}}\n"
                 "    if entry.get('val'):\n"
                 "        row.update({{'val_' + k: round(entry['val'][k], 3) for k in (*METRICS, 'score')}})\n"
                 "    if 'note' in entry:\n"
                 "        row['note'] = entry['note']\n"
-                "    print(row)\n\n\n"
-                "settings = {{'epochs': EPOCHS, 'lr': LEARNING_RATE, 'batch_size': BATCH_SIZE, 'trainable_blocks': TRAINABLE_BLOCKS}}\n"
-                "if settings != {{'epochs': 8, 'lr': 5e-5, 'batch_size': 8, 'trainable_blocks': 2}}:\n"
-                "    print({{'note': 'changed settings: this run starts again from the pinned base and replaces the default results of Sections 8-9; Section 10 compares a change side by side instead', 'settings': settings}})\n"
+                "    print(row)\n"
+                "\n"
+                "\n"
+                "configs = RECIPE_GRID if RUN_RECIPE_GRID else ((f'blocks={{TRAINABLE_BLOCKS}}', TRAINABLE_BLOCKS),)\n"
+                "if not RUN_RECIPE_GRID:\n"
+                "    print({{'note': 'RUN_RECIPE_GRID = False: one configuration you chose and no selection, so its test score is a one-off look, not the pre-registered result'}})\n"
+                "grid_dir = Path('work/recipe_grid')\n"
+                "shutil.rmtree(grid_dir, ignore_errors=True)\n"
+                "grid_results, grid_rows = {{}}, []\n"
                 "t0 = time.perf_counter()\n"
-                "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=TRAINABLE_BLOCKS, progress=report)\n"
+                "for name, blocks in configs:\n"
+                "    print({{'config': name, 'trainable_blocks': blocks}})\n"
+                "    result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_blocks=blocks, seed=ADAPT_SEED, progress=report)\n"
+                "    pipe.save_artifact(grid_dir / name, metadata={{'tutorial': '{stem}', 'recipe_config': name}})\n"
+                "    grid_results[name] = result\n"
+                "    grid_rows.append({{'name': name, 'trainable_blocks': blocks, 'trainable_parameters': result['n_trainable'], 'best_epoch': result['best_epoch'], 'best_score': result['history'][result['best_epoch']]['val']['score'], 'seconds': result['seconds']}})\n"
                 "adapt_seconds = round(time.perf_counter() - t0, 1)\n"
-                "print({{'trainable_parameters': adapt_result['n_trainable'], 'total_parameters': adapt_result['n_total'], 'preparation_seconds': adapt_result['preparation_seconds'], 'best_epoch': adapt_result['best_epoch'], 'selection': adapt_result['selection'], 'loss': adapt_result['loss'], 'started_from': adapt_result['started_from'], 'seconds': adapt_seconds}})"
+                "frozen_val_score = grid_results[configs[0][0]]['history'][0]['val']['score']\n"
+                "validation_table = {{name: [round(h['val']['score'], 4) for h in result['history']] for name, result in grid_results.items()}}\n"
+                "print({{'validation_score_by_epoch (epoch 0 = frozen)': validation_table}})\n"
+                "for row in grid_rows:\n"
+                "    print({{k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}})\n"
+                "if RUN_RECIPE_GRID:\n"
+                "    recipe_selection = select_recipe(grid_rows, frozen_val_score)\n"
+                "else:\n"
+                "    recipe_selection = {{'chosen': configs[0][0], 'trainable_blocks': TRAINABLE_BLOCKS, 'frozen_score': frozen_val_score, 'rule': 'no selection (RUN_RECIPE_GRID = False)'}}\n"
+                "recipe_selection.update({{'validation_table': validation_table, 'grid': grid_rows, 'grid_seconds': adapt_seconds}})\n"
+                "chosen = recipe_selection['chosen']\n"
+                "if chosen == 'frozen':\n"
+                "    pipe.restore_base()\n"
+                "    adapt_result = None\n"
+                "    print({{'recipe_selection': chosen, 'note': 'no configuration beat the frozen epoch-0 validation score by more than the margin: the frozen model is the result, and Section 8 does not score test again'}})\n"
+                "else:\n"
+                "    pipe.load_artifact(grid_dir / chosen)  # the chosen configuration at its best epoch, overlaid like any verified artifact\n"
+                "    adapt_result = grid_results[chosen]\n"
+                "    print({{'recipe_selection': chosen, 'eligible': recipe_selection.get('eligible'), 'best_epoch': adapt_result['best_epoch'], 'trainable_parameters': adapt_result['n_trainable'], 'total_parameters': adapt_result['n_total'], 'grid_seconds': adapt_seconds}})"
             ),
         },
         {
             "md": (
-                '**What to notice:** the validation PCK and OKS per epoch, and `best_epoch`.\n\n<details><summary>Check your reasoning</summary>Whichever epoch has the highest mean of validation PCK and OKS — on the build workstation the validation PCK climbed from about 0.66 to 0.74 over the eight epochs. If no epoch beats the frozen model, epoch 0 is kept and the adapted model *is* the frozen model: that is a valid result, and Section 8 records it as `no gain`.</details>'
+                "**What to notice:** the 3 × 9 table of validation scores, each configuration's `best_epoch`, and `recipe_selection`.\n\n<details><summary>Check your reasoning</summary>In the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook) the frozen model scored 0.620 on validation (mean of PCK and OKS); the best epochs scored 0.648 for G1 (epoch 8), 0.719 for G2 (epoch 8) and 0.747 for G3 (epoch 8), and the rule chose **G3, head and four blocks**: it beats the frozen model by 0.127, and G1 trails it by 0.100; G2 trails it by 0.028 (eligible: G1, G2, G3). The rule need not pick the highest score: a larger configuration has to earn its extra trainable blocks by more than 0.01. If nothing beats the frozen model by more than 0.01, the frozen model is the result, and Section 8 records it as `no gain`.</details>"
             ),
         },
         {
             "md": (
                 "## 8. Held-out evaluation\n\n"
-                "The test persons were never used for training or epoch selection, and no photograph appears in two splits. "
+                "The test persons were never used for training, epoch selection or choosing the recipe (Section 7 read validation only); they are scored **once**, for the configuration the pre-registered rule chose, and no photograph appears in two splits. "
                 "The adapted model is scored exactly as the frozen model was in Section 6 — on the small persons and on their "
                 "clean counterparts — the systems are put side by side on both measures, and the per-category breakdown is "
                 "repeated. Read it in this order: **PCK on the small persons** first, then **mean OKS**, then the **clean "
                 "counterparts** — PCK *and* OKS, because they need not move together — then the per-category rows. The cell "
-                "records a verdict — `improved`, `no gain` or `worse` — instead of asserting a gain: when validation keeps epoch "
+                "records a verdict — `improved`, `no gain` or `worse` — instead of asserting a gain: when the rule keeps the frozen model, or validation keeps epoch "
                 "0 the adapted model is the frozen model, and on undegraded BYOD persons the frozen model may already be near "
                 "the ceiling; the export, reload and result still run. A hundred-odd persons from one seeded split under one degradation give **no "
                 "dispersion estimate**; the deltas are sample-sanity evidence that the adaptation contract works, not a "
@@ -495,9 +530,14 @@ TEMPLATE = {
                 "**Predict before running:** will the fine-tune cost the clean persons anything?"
             ),
             "code": (
-                "adapted_test = pipe.evaluate(test_records)\n"
+                "adapted_test = frozen_test if adapt_result is None else pipe.evaluate(test_records)  # test is scored once, for the configuration validation chose\n"
                 "adapted_val = pipe.evaluate(val_records)\n"
-                "adapted_clean = pipe.evaluate(clean_test) if clean_test is not None else None\n"
+                "if adapt_result is None:\n"
+                "    print({{'note': 'the pre-registered rule kept the frozen model: the adapted rows are the frozen rows, and test is not scored again'}})\n"
+                "    adapted_clean = frozen_clean\n"
+                "else:\n"
+                "    adapted_clean = pipe.evaluate(clean_test) if clean_test is not None else None\n"
+                ""
                 "adapted_fields = {{c: {{'n': v['n'], 'pck': round(v['pck'], 3), 'oks': round(v['oks'], 3)}} for c, v in adapted_test['per_category'].items()}}\n"
                 "comparison = {{metric: {{'box_centre': round(baseline_centre[metric], 3), 'mean_pose': round(baseline_prior[metric], 3), 'frozen': round(frozen_test[metric], 3), 'adapted': round(adapted_test[metric], 3)}} for metric in METRICS}}\n"
                 "if frozen_clean is not None:\n"
@@ -527,8 +567,9 @@ TEMPLATE = {
                 "    'test_metrics': adapted_test,\n"
                 "    'clean_metrics': adapted_clean,\n"
                 "    'comparison': comparison,\n"
-                "    'adaptation': {{k: v for k, v in adapt_result.items() if k not in ('history', 'trainable_names')}},\n"
-                "    'history': adapt_result['history'],\n"
+                "    'recipe_selection': recipe_selection,\n"
+                "    'adaptation': None if adapt_result is None else {{k: v for k, v in adapt_result.items() if k not in ('history', 'trainable_names')}},\n"
+                "    'history': None if adapt_result is None else adapt_result['history'],\n"
                 "    'adaptation_seconds': adapt_seconds,\n"
                 "}}\n"
                 "with open('outputs/{stem}_evaluation_report.json', 'w', encoding='utf-8') as f:\n"
@@ -539,19 +580,19 @@ TEMPLATE = {
         },
         {
             "md": (
-                "**What to notice:** `delta_vs_frozen`, the clean rows (PCK and OKS), the per-category rows and the `verdicts`.\n\n<details><summary>Check your reasoning</summary>A little, on one measure. In the Kaggle T4 release run (20 September 2026) the small persons rose from PCK 0.598 to 0.718 and OKS 0.564 to 0.681 — past the mean-pose prior — with fully labelled persons gaining most (0.604 → 0.795). On the clean persons PCK held (0.957 → 0.959) but OKS fell from 0.94 to 0.93: a small but real cost that PCK alone hides. The build workstation's record (RTX 5070 Ti) was close: 0.721 PCK, OKS 0.565 → 0.684, clean PCK 0.958.</details>"
+                "**What to notice:** `delta_vs_frozen`, the clean rows (PCK and OKS), the per-category rows and the `verdicts`.\n\n<details><summary>Check your reasoning</summary>Not measurably. In the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook) the chosen configuration (G3, head and four blocks, epoch 8) raised the small persons from PCK 0.597 to 0.741 and OKS 0.574 to 0.695, past the mean-pose prior (0.469 / 0.440), while the clean persons moved from PCK 0.957 to 0.958 and OKS 0.940 to 0.939. An earlier revision taught a clean-OKS cost of fine-tuning (0.94 → 0.93); it was an artifact of two coordinate-convention errors, now fixed (see **What did not work**). Differences of a few thousandths are within what 136 persons from one seeded split can resolve.</details>"
             ),
         },
         {
             "md": (
                 "## 9. Look at the skeletons, export the adapter and reload it\n\n"
                 "The drawing from Section 5 is estimated again by the adapted model — an image family the adaptation never "
-                "saw, so this is a small look at what the adaptation did *outside* its corpus: the build record kept the "
+                "saw, so this is a small look, not a measurement, at what the adaptation did *outside* its corpus "
                 "self-drawn PCK at 1.0 — and four held-out small persons are written as side-by-side panels "
                 "(`outputs/{stem}_examples/`: the degraded crop enlarged four times with the frozen skeleton, the adapted "
                 "skeleton, and the labelled joints) so the numbers can be checked by eye: the adapted skeletons should sit on "
                 "the blurred limbs where the frozen ones drift.\n\n"
-                "`pipe.save_artifact` writes the trained tensors — the head, the last two blocks and the final LayerNorm, about "
+                "`pipe.save_artifact` writes the chosen configuration's trained tensors (for G3, the head with four blocks, about 130 MB) — for G2 the head, the last two blocks and the final LayerNorm, about "
                 "74 MB — as `adapter.safetensors`, with a `manifest.json` recording the artifact format, the base model id and "
                 "revision, the digest of the base `model.safetensors`, the tensor names, the file size and SHA-256, the training "
                 "configuration and the epoch history (OUT8). `VitPoseKeypointPipeline.from_artifact` re-verifies both base "
@@ -594,15 +635,21 @@ TEMPLATE = {
                 "print({{'examples': sorted(p.name for p in examples_dir.iterdir()), 'panel_order': ['frozen skeleton', 'adapted skeleton', 'labelled joints'], 'zoom': 4}})\n\n"
                 "artifact_dir = Path('outputs/{stem}_adapter')\n"
                 "shutil.rmtree(artifact_dir, ignore_errors=True)\n"
-                "pipe.save_artifact(artifact_dir, metadata={{'tutorial': '{stem}', 'data_source': data_source}})\n"
-                "artifact_manifest = json.loads((artifact_dir / 'manifest.json').read_text(encoding='utf-8'))\n"
-                "print({{'artifact': str(artifact_dir), 'format': artifact_manifest['format'], 'tensors': len(artifact_manifest['tensors']), 'bytes': artifact_manifest['files'][0]['bytes'], 'sha256': artifact_manifest['files'][0]['sha256'][:16] + '...'}})\n\n"
-                "reloaded = VitPoseKeypointPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)\n"
-                "before = [pipe.predict_keypoints(r) for r in test_records[:8]]\n"
-                "after = [reloaded.predict_keypoints(r) for r in test_records[:8]]\n"
-                "parity = {{'identical_persons': sum(all(np.allclose(a[k], b[k]) for k in KEYPOINT_NAMES) for a, b in zip(before, after, strict=True)), 'of': len(before), 'max_abs_difference_px': float(max(abs(np.array(a[k]) - np.array(b[k])).max() for a, b in zip(before, after, strict=True) for k in KEYPOINT_NAMES))}}\n"
-                "print({{'reload_parity': parity, 'reloaded_best_epoch': reloaded.adapter['best_epoch']}})\n"
-                "assert parity['identical_persons'] == parity['of']\n\n"
+                "if pipe.adapter is None:\n"
+                "    artifact_manifest, parity = None, None\n"
+                "    print({{'artifact': 'none: the pre-registered rule kept the frozen model, so there is no adapter to export or reload'}})\n"
+                "else:\n"
+                "    pipe.save_artifact(artifact_dir, metadata={{'tutorial': '{stem}', 'data_source': data_source, 'recipe': recipe_selection['chosen']}})\n"
+                "    artifact_manifest = json.loads((artifact_dir / 'manifest.json').read_text(encoding='utf-8'))\n"
+                "    print({{'artifact': str(artifact_dir), 'format': artifact_manifest['format'], 'tensors': len(artifact_manifest['tensors']), 'bytes': artifact_manifest['files'][0]['bytes'], 'sha256': artifact_manifest['files'][0]['sha256'][:16] + '...'}})\n"
+                "    reloaded = VitPoseKeypointPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, detector_dir=DETECTOR_WEIGHTS_DIR, device=pipe.device)\n"
+                "    before = [pipe.predict_keypoints(r) for r in test_records[:8]]\n"
+                "    after = [reloaded.predict_keypoints(r) for r in test_records[:8]]\n"
+                "    parity = {{'identical_persons': sum(all(np.allclose(a[k], b[k]) for k in KEYPOINT_NAMES) for a, b in zip(before, after, strict=True)), 'of': len(before), 'max_abs_difference_px': float(max(abs(np.array(a[k]) - np.array(b[k])).max() for a, b in zip(before, after, strict=True) for k in KEYPOINT_NAMES))}}\n"
+                "    print({{'reload_parity': parity, 'reloaded_best_epoch': reloaded.adapter['best_epoch']}})\n"
+                "    assert parity['identical_persons'] == parity['of']\n"
+                "\n"
+                ""
                 "result_payload = {{\n"
                 "    'notebook_source': NOTEBOOK_SOURCE,\n"
                 "    'repository_revision': NOTEBOOK_SOURCE['repository_revision'],\n"
@@ -618,7 +665,8 @@ TEMPLATE = {
                 "    'inference_contract': {{'input_manifest': input_manifest, 'scene': {{'name': scene_name, 'sha256': scene_sha256, 'findings': scene_findings}}, 'stage1': stage1, 'frozen_report': frozen_scene, 'adapted_report': adapted_scene, 'output_files': ['outputs/{stem}_scene_frozen.png', 'outputs/{stem}_scene_adapted.png']}},\n"
                 "    'comparison': comparison,\n"
                 "    'examples': 'outputs/{stem}_examples',\n"
-                "    'artifact': {{'dir': str(artifact_dir), 'sha256': artifact_manifest['files'][0]['sha256'], 'bytes': artifact_manifest['files'][0]['bytes'], 'tensors': len(artifact_manifest['tensors'])}},\n"
+                "    'artifact': None if artifact_manifest is None else {{'dir': str(artifact_dir), 'sha256': artifact_manifest['files'][0]['sha256'], 'bytes': artifact_manifest['files'][0]['bytes'], 'tensors': len(artifact_manifest['tensors'])}},\n"
+                "    'recipe_selection': recipe_selection,\n"
                 "    'reload_parity': parity,\n"
                 "    'runtime': {{'python': platform.python_version(), 'torch': torch.__version__, 'transformers': transformers.__version__, 'device': pipe.device, 'dtype': 'float32'}},\n"
                 "}}\n"
@@ -629,27 +677,29 @@ TEMPLATE = {
         },
         {
             "md": (
-                "**What to notice:** the four panels in `outputs/{stem}_examples/`, the drawing's PCK after adaptation, and the reload parity line.\n\n<details><summary>Check your reasoning</summary>On the limbs: wrists, elbows and ankles are the joints a 40-px JPEG blurs most, and that is where the frozen skeleton drifts. The build record kept the self-drawn PCK at 1.0 after adaptation. Reload parity held in the release run: eight of eight persons identical, with a largest difference of 7.6e-06 px.</details>"
+                "**What to notice:** the four panels in `outputs/{stem}_examples/`, the drawing's PCK after adaptation, and the reload parity line.\n\n<details><summary>Check your reasoning</summary>On the limbs: wrists, elbows and ankles are the joints a 40-px JPEG blurs most, and that is where the frozen skeleton drifts. Reload parity is a contract check: in the Colab T4 run of the previous revision (blob 49fc2c05) eight of eight persons were identical, with a largest difference of 7.6e-06 px.</details>"
             ),
         },
         {
             "md": (
-                "## 10. Change one thing: the head alone (optional)\n\n"
+                "## 10. Change one thing (optional)\n\n"
                 "*Evaluation practice.* A **Predict → Change one thing → Run → Observe → Explain** activity, off by default so "
-                "Run all is unaffected. Set `RUN_EXPERIMENT = True`, change **one** field — by default zero encoder blocks, so only "
-                "the heatmap head trains — and run this cell after Sections 4–9. The experiment loads its **own** pipeline from the "
+                "Run all is unaffected. Set `RUN_EXPERIMENT = True`, change **one** field — by default one encoder block, a scope the grid did not try, so "
+                "the head and the last block train — and run this cell after Sections 4–9. The experiment loads its **own** pipeline from the "
                 "verified snapshots, so it starts from the checkpoint and never touches the default `pipe`; it writes only to "
                 "`outputs/{stem}_experiment/`, prints the default and the changed run side by side (epoch 0 must match), saves and "
                 "reloads its own adapter to check parity, and checks that the default exports are byte-identical afterwards.\n\n"
-                "**Predict:** how much of the default run's gain will the head alone recover?"
+                "Its `test` row is a one-off look at a configuration the rule did not choose; never pick a recipe from it.\n\n**Predict:** will one block land between G1 and G2 on validation, and does its one-off test row agree?"
             ),
             "code": (
                 "RUN_EXPERIMENT = False  # @param {{type:\"boolean\"}}\n"
-                "EXPERIMENT_TRAINABLE_BLOCKS = 0  # @param {{type:\"integer\"}}\n"
+                "EXPERIMENT_TRAINABLE_BLOCKS = 1  # @param {{type:\"integer\"}}\n"
                 "EXPERIMENT_EPOCHS = 8  # @param {{type:\"integer\"}}\n"
                 "EXPERIMENT_LEARNING_RATE = 5e-5  # @param {{type:\"number\"}}\n\n"
                 "if not RUN_EXPERIMENT:\n"
                 "    print({{'experiment': 'skipped (RUN_EXPERIMENT = False); the default path above is complete'}})\n"
+                "elif adapt_result is None:\n"
+                "    print({{'experiment': 'skipped: the pre-registered rule kept the frozen model, so there is no default adapter to compare against'}})\n"
                 "else:\n"
                 "    canonical_files = {{'adapter': artifact_dir / 'adapter.safetensors', 'evaluation_report': Path('outputs/{stem}_evaluation_report.json'), 'result': Path('outputs/{stem}_result.json')}}\n"
                 "    canonical = {{name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in canonical_files.items()}}\n"
@@ -686,31 +736,23 @@ TEMPLATE = {
             "md": (
                 "**Observe → Explain.** Compare `epoch_0_val_score` (it must be equal: both runs start from the checkpoint), the "
                 "`test` rows and `experiment_reload_parity`.\n\n"
-                "<details><summary>Check your reasoning</summary>The build record's head-only run moved PCK by about a hundredth, "
-                "against roughly twelve points for two blocks: the head can only re-read the features it is given, and at 40 px "
-                "the features themselves are what is wrong — the last encoder blocks have to learn to read blurred, block-edged "
-                "limbs. No experiment run is recorded on the release runtime; on 136 persons, read a difference of a point or two "
-                "as noise.</details>"
+                "<details><summary>Check your reasoning</summary>In the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook) the grid's head-only configuration (G1) reached a best validation score of 0.648, against 0.719 for two blocks and 0.620 frozen: the head can only re-read the features it is given, and at 40 px the features themselves are what is wrong, so the encoder blocks have to learn to read blurred, block-edged limbs. No experiment run is recorded; on 136 persons, read a test difference of a point or two as noise.</details>"
             ),
         },
     ],
     "closing": (
         "## Interpretation and limits\n\n"
-        "A pose estimator trained on crops of full-resolution persons loses a third of its PCK when the person is 40 px tall "
-        "and JPEG-blocked (0.957 → 0.598 in the Kaggle T4 release run of 20 September 2026, against a box-only prior of 0.472), "
-        "and a bounded fine-tuning of the heatmap head and the last two encoder blocks on 290 such persons recovers a third of "
-        "that loss (0.718 PCK, 0.681 mean OKS) while holding the clean persons' PCK (0.957 → 0.959) at a small cost in their "
-        "OKS (0.94 → 0.93), with a 74 MB adapter that reloads joint-for-joint. That is "
+        "A pose estimator trained on crops of full-resolution persons loses about a third of its PCK when the person is 40 px tall and JPEG-blocked (0.957 → 0.597 in the CPU development run of this revision's package code (fix branch on base 8934a7d9, 17 October 2026; not yet a recorded run of this notebook), against a box-only prior of 0.469), and a bounded fine-tuning chosen on validation by a pre-registered rule (G3, head and four blocks) recovers part of that loss on the held-out persons (PCK 0.741, mean OKS 0.695, test scored once) while the clean persons stay where they were (PCK 0.957 → 0.958, OKS 0.940 → 0.939), with an adapter that reloads joint-for-joint. That is "
         "the claim: the adaptation contract works end to end on a real labelled set under a stated degradation, and the numbers "
         "it produces are read on two measures, per category, against two box-only baselines, the frozen model and the clean "
         "counterparts rather than in isolation.\n\n"
         "The test split is 136 persons from one seeded draw of one sample under one degradation, the validation split that picks "
-        "the epoch is 72, and both measures score joints against COCO's labels at a stated tolerance — PCK at a tenth of the "
+        "the recipe and the epoch is 168 persons on 110 photographs, and both measures score joints against COCO's labels at a stated tolerance — PCK at a tenth of the "
         "box, OKS with COCO's sigmas — so a gain here says the contract works under 40-px JPEG-30 downscaling, not that the "
         "adapted model handles motion blur, low light, unusual viewpoints, crowds or your camera's own artefacts, and not that "
         "its heatmap scores are calibrated (they are not, before or after). The categories are COCO's labelling density, a proxy "
         "for occlusion, not a property of the person. Fine-tuning on one degradation also shapes what the model expects: the "
-        "clean counterparts held here, but a different degradation would need its own measurement.\n\n"
+        "clean counterparts held here, but a different degradation would need its own measurement. The photographs come from COCO val2017: ViTPose-base was trained on train2017, not val2017, but upstream training used val2017 to pick its released checkpoint (`save_best='AP'`), so the frozen clean scores are mildly optimistic.\n\n"
         "Three things to carry to real data. **Baselines first:** the box-centre floor and the mean-pose prior on *your* labels "
         "are the numbers to read before any model number, per subset. **Degradation:** the persons the model learns from define "
         "what it learns to read; make your training input the way your deployment makes it (the contract's `degrade` is one "
@@ -724,14 +766,14 @@ TEMPLATE = {
         "counterparts on an image-disjoint split, and emit the shown machine-readable artifacts — without the repository being "
         "reachable. It does **not** establish benchmark superiority, pose quality under any other degradation, calibration of "
         "the heatmap scores, or production fitness.\n\n"
-        "**Optional experiments (off by default; each names its field and what to run):** Section 10 trains the head alone in "
-        "its own pipeline and prints it beside the default run — change `EXPERIMENT_TRAINABLE_BLOCKS` (4 peaks early and "
-        "falls in the build record), `EXPERIMENT_EPOCHS` or `EXPERIMENT_LEARNING_RATE` (for example `1e-4`) there and run "
-        "that cell again. Changing `EPOCHS`, `LEARNING_RATE` or `TRAINABLE_BLOCKS` and choosing **Run after** from Section 7 "
-        "also starts from the pinned base — every `adapt` puts it back first — but replaces the default results and exports. "
+        "**Optional experiments (off by default; each names its field and what to run):** Section 10 trains one changed configuration in "
+        "its own pipeline and prints it beside the default run — change `EXPERIMENT_TRAINABLE_BLOCKS`, "
+        "`EXPERIMENT_EPOCHS` or `EXPERIMENT_LEARNING_RATE` (for example `1e-4`) there and run "
+        "that cell again. Setting `RUN_RECIPE_GRID = False` with another `TRAINABLE_BLOCKS` and choosing **Run after** from Section 7 "
+        "also starts from the pinned base — every `adapt` puts it back first — but replaces the default results and exports and is no longer the pre-registered result. "
         "BYOD: `USE_BYOD` and `BYOD_PATH` in Section 4, then **Run after** from Section 4, and read the two baselines before "
         "the adapted number.\n\n"
-        "## Troubleshooting\n\n"
+        "## What did not work\n\n- **Choosing the recipe on test (superseded).** An earlier revision fixed two blocks at 40 px after development runs whose test scores had been read (head only at 64 px, two blocks at 32 px, four blocks at 32 px; recorded in the model card as superseded development runs, not evidence from this notebook). This revision fixes the task in advance and chooses the recipe on validation by the rule at the top; test is scored once.\n- **A clean-OKS cost that was not there.** The earlier revision reported that fine-tuning cost the clean persons OKS (0.94 → 0.93 in the Kaggle T4 run of blob 050796f8). It came from two coordinate-convention errors: the degraded labels were scaled as `x·s`, about 0.4 px off the image content COCO's pixel-index labels mark, and the heatmap targets were encoded with a stride of `crop / heatmap` while the processor decodes with `(crop − 1) / (heatmap − 1)`. Together they shifted every adapted prediction by about 1.7 px at clean scale. With both fixed, the clean OKS stays at 0.939 (CPU development run on base 8934a7d9, 17 October 2026).\n\n## Troubleshooting\n\n"
 '- **Section 1 stops with "This notebook needs a Linux x86_64 runtime"** — you are on Windows, macOS or an ARM machine. Use Google Colab, Kaggle or a Linux x86_64 Jupyter server.\n- **The uv wheel fails its size/SHA-256 check, or a download in Section 1 times out** — run Section 1 again; a complete environment is reused, an incomplete one is finished. If it repeats, the network is blocking or altering `files.pythonhosted.org` or `pypi.org`.\n- **"The isolated environment\'s Python process exited"** — usually out of memory. Restart the session and choose **Run all**; leave the optional experiment off on a small runtime.\n- **You re-ran Section 1 on its own** — nothing is lost: it keeps the running worker and every variable, so the cells after it keep working. After a session restart, run from the top.\n- **Section 3 reports a size or SHA-256 mismatch, or cannot reach the Hub** — the message names the file. Delete it from the snapshot folder Section 3 prints and run Section 3 again; the snapshot comes from `huggingface.co`.\n- **Section 4 cannot fetch a photograph, or one fails its digest** — `fetch_corpus` names it; the default path needs `images.cocodataset.org` (plain HTTP; every file is checked against its pinned SHA-256). Run Section 4 again (cached photographs are re-hashed); delete `weights/coco-val-persons/` if a cached file is corrupt.\n- **Section 7 takes half an hour** — that is the CPU cost of eight epochs; choose a GPU runtime and **Run all** again.\n- **Out of memory** — lower `BATCH_SIZE` in Section 7, or restart the session and choose **Run all**; leave Section 10 off on a small runtime.\n- **BYOD: "BYOD_PATH … does not exist"** — the path is relative to the working directory printed in the message.\n- **BYOD: "the upload dialog exists only in Google Colab"** — on Kaggle or Jupyter, put the zip in the runtime (or attach it as a dataset) and set `BYOD_PATH`.\n- **BYOD: "Upload exactly one .zip file"** — the dialog was cancelled or several files were chosen; run the cell again.\n- **BYOD: "keypoints.csv line N (file …): names an image that is not among the uploaded files"** — fix the `file` column of that row, or add the image to the zip.\n- **BYOD: "… must be numbers" / "… must be present and numeric"** — a box or joint coordinate on that line is not a number.\n- **BYOD: "the train split holds … persons" or "… too few to split"** — add images or persons; the message names the minimum.\n'
         "## Glossary\n\n"
         "- **Top-down pose** — find each person's box first, then estimate that person's joints inside it.\n"
@@ -755,15 +797,22 @@ TEMPLATE = {
         "- Mean-pose prior PCK ___; frozen ___ on the small persons and ___ on the clean ones.\n"
         "- After fine-tuning (epoch ___ kept): PCK ___, OKS ___; clean PCK ___, clean OKS ___ — a cost of ___.\n"
         "- What I would need before claiming the fine-tune helps on my camera: ___ (for example my own degradation, more test persons, several seeds).\n\n"
-        "## References\n\n"
-        "- Repository README: https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/README.md\n"
-        "- Repository model card: https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/MODEL_CARD.md\n"
-        "- Weight provenance: https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/docs/WEIGHTS.md\n"
-        "- Upstream model: https://huggingface.co/{MODEL_ID}\n"
-        "- Upstream code: https://github.com/ViTAE-Transformer/ViTPose\n"
-        "- ViTPose: Simple Vision Transformer Baselines for Human Pose Estimation (Xu, Zhang, Zhang, Tao, NeurIPS 2022): https://arxiv.org/abs/2204.12484\n"
-        "- RT-DETR (Zhao et al., CVPR 2024): https://arxiv.org/abs/2304.08069\n"
-        "- Microsoft COCO: Common Objects in Context (Lin et al., ECCV 2014; keypoint annotations CC BY 4.0, photographs under their Flickr licences): https://cocodataset.org/#termsofuse\n"
-        "- DIMER Notebook Specification 2.2 and Model Card Specification 1.1 (fleet specs in the ml-worker repository)"
+        "## References\n"
+        "\n"
+        "[1] Y. Xu, J. Zhang, Q. Zhang, and D. Tao, 'ViTPose: Simple vision transformer baselines for human pose estimation,' in *Adv. Neural Inf. Process. Syst. (NeurIPS)*, 2022. [Online]. Available: https://arxiv.org/abs/2204.12484\n"
+        "\n"
+        "[2] Y. Zhao *et al.*, 'DETRs beat YOLOs on real-time object detection,' in *Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)*, 2024. [Online]. Available: https://arxiv.org/abs/2304.08069\n"
+        "\n"
+        "[3] T.-Y. Lin *et al.*, 'Microsoft COCO: Common objects in context,' in *Proc. Eur. Conf. Comput. Vis. (ECCV)*, 2014, doi: 10.1007/978-3-319-10602-1_48. Keypoint annotations CC BY 4.0; photographs under their Flickr licences: https://cocodataset.org/#termsofuse\n"
+        "\n"
+        "[4] J. Huang, Z. Zhu, F. Guo, and G. Huang, 'The devil is in the details: Delving into unbiased data processing for human pose estimation,' in *Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)*, 2020. [Online]. Available: https://arxiv.org/abs/1911.07524\n"
+        "\n"
+        "[5] usyd-community, 'vitpose-base,' Hugging Face model card, revision 95be2991424e. [Online]. Available: https://huggingface.co/usyd-community/vitpose-base/tree/95be2991424e646950d656bb7fc15ec9be119700\n"
+        "\n"
+        "[6] PekingU, 'rtdetr_r50vd,' Hugging Face model card, revision df939e661d8c. [Online]. Available: https://huggingface.co/PekingU/rtdetr_r50vd/tree/df939e661d8c52e80608d1ec566561aabd25a4e7\n"
+        "\n"
+        "[7] ViTAE-Transformer, 'ViTPose,' GitHub repository (configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/coco/ViTPose_base_coco_256x192.py). [Online]. Available: https://github.com/ViTAE-Transformer/ViTPose\n"
+        "\n"
+        "Repository documents (not cited above): README https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/README.md · model card https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/MODEL_CARD.md · weight provenance https://github.com/kurtvalcorza/vitpose-keypoint-pipeline/blob/main/docs/WEIGHTS.md · DIMER Notebook Specification 2.5 and Model Card Specification 1.1 (fleet specs in the ml-worker repository)"
     ),
 }
