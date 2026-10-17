@@ -82,9 +82,11 @@ PREREGISTERED_SETTINGS: dict[str, Any] = {
     "recipe_margin": RECIPE_MARGIN,
 }
 TEST_LOOKS = ("pre-registered evaluation", "reproduction", "not scored (exploratory)")
-# The release-verification record of the first pre-registered hosted run once one exists (None: none recorded yet).
+# The release-verification record of the first pre-registered hosted run (None would mean none recorded yet).
 # While it is set, every later run with the pre-registered settings is labelled a reproduction.
-PREREGISTERED_EVALUATION_RECORD: str | None = None
+PREREGISTERED_EVALUATION_RECORD: str | None = (
+    "docs/release-verification.md: Colab CLI T4 run of 2026-10-17 (commit bc43916, notebook blob 08d1c0c5)"
+)
 
 
 def _canonical_setting(value: Any) -> Any:

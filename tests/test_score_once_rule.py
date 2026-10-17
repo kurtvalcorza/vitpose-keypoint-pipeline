@@ -98,8 +98,11 @@ def test_a_setting_cannot_be_left_out_or_smuggled_in():
 
 def test_identical_rerun_is_labelled_a_reproduction(tmp_path):
     check = check_preregistration(dict(PREREGISTERED_SETTINGS))
-    first = plan_test_look(check, tmp_path, STEM)
+    # with no recorded evaluation, the first identical run is the pre-registered evaluation
+    first = plan_test_look(check, tmp_path, STEM, recorded_evaluation="")
     assert first["test_look"] == TEST_LOOKS[0] == "pre-registered evaluation" and first["suffix"] == ""
+    # the package names the recorded hosted evaluation, so a default identical run is a reproduction of it
+    assert sm.PREREGISTERED_EVALUATION_RECORD and plan_test_look(check, tmp_path, STEM)["test_look"] == "reproduction"
     # a recorded hosted evaluation makes every later identical run a reproduction
     assert (
         plan_test_look(check, tmp_path, STEM, recorded_evaluation="release-verification run 1")["test_look"]
@@ -250,8 +253,11 @@ def test_default_settings_score_the_fresh_test_as_the_preregistered_evaluation(
     ns, pipe = _run_sections_4_to_8(notebook, tmp_path)
     assert ns["preregistration"]["preregistered"] and FRESH in pipe.scored
     report = json.loads((tmp_path / "outputs" / f"{STEM}_evaluation_report.json").read_text(encoding="utf-8"))
+    # the recorded hosted evaluation (PREREGISTERED_EVALUATION_RECORD) makes this identical run a reproduction of it;
+    # it still writes the canonical report, because this runtime has none yet
+    first_look = "reproduction" if sm.PREREGISTERED_EVALUATION_RECORD else "pre-registered evaluation"
     assert (
-        report["test_look"] == "pre-registered evaluation"
+        report["test_look"] == first_look
         and report["settings_differing"] == []
         and report["preregistered"] is True
     )
@@ -267,7 +273,7 @@ def test_default_settings_score_the_fresh_test_as_the_preregistered_evaluation(
         json.loads((tmp_path / "outputs" / f"{STEM}_evaluation_report.json").read_text(encoding="utf-8"))[
             "test_look"
         ]
-        == "pre-registered evaluation"
+        == first_look
     )
 
 

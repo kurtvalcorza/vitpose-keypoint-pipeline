@@ -205,7 +205,8 @@ runtime, not general estimates.
   0.098, G1 trails by 0.079, adapted PCK 0.773, score interval +0.146 [+0.102, +0.187], clean 0.978 / 0.961, development
   test 0.597 → 0.743, 0.574 → 0.698, clean OKS 0.940 → 0.938. Follow-up: requote these in the generator and regenerate,
   and set `PREREGISTERED_EVALUATION_RECORD` (`src/vitpose_keypoint_pipeline/samples.py`, still `None`) to this record;
-  both change the notebook blob and are not part of this docs-only record.
+  both change the notebook blob and are not part of this docs-only record. (Both done on 2026-10-17 in the requote
+  commits that follow this record.)
 - **Evidence files** (`docs/execution-evidence/2026-10-17-bc43916/`, byte-exact copies):
   - `vitpose_keypoint_colab_bc43916_colab-cli-t4_output.ipynb` — SHA-256 `5087de51ec3b77090984d3aae63fe6e217c6559dc6f3a8bd365322da142fc487`
   - `exec.log` — SHA-256 `c31751e15757d342314eca3d2f59d43be3d9fef0c25b5fd51f0356322a444b49`
@@ -286,8 +287,8 @@ batch 8, 8 epochs, fine-tuning seed 0, grid G1 / G2 / G3 with margin 0.01 (`PRER
 - The fresh-test numbers above come from a CPU development run of the package code under these settings, not a run of
   the notebook; no hosted run is recorded yet, so no evaluation record exists yet.
 - REL13 update (2026-10-17): the hosted Colab T4 run of blob `08d1c0c5` (recorded above) is now the pre-registered
-  evaluation of record; the CPU numbers above are a disclosed development look. `PREREGISTERED_EVALUATION_RECORD` is not
-  yet set in the package (follow-up; it changes the notebook blob).
+  evaluation of record; the CPU numbers above are a disclosed development look. `PREREGISTERED_EVALUATION_RECORD` now
+  names that run (set in the 2026-10-17 requote commit; it changed the notebook blob).
 
 ## Current status
 
