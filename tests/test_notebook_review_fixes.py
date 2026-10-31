@@ -377,7 +377,7 @@ def test_vtp_m1_upload_outside_colab_cancelled_and_bad_path_are_explained(notebo
     with pytest.raises(ValueError, match="upload dialog exists only in Google Colab") as refused:
         exec(_section_4(notebook, ""), _section_4_namespace([]))
     assert refused.value.dimer_refusal and refused.value._render_traceback_() == [str(refused.value)]
-    with pytest.raises(ValueError, match="BYOD_PATH 'nowhere.zip' does not exist"):
+    with pytest.raises(ValueError, match="^Refused: nowhere.zip: BYOD_PATH does not exist"):
         exec(_section_4(notebook, "nowhere.zip"), _section_4_namespace([]))
     # A malformed upload is refused in one message and invalidates the active run, but leaves earlier outputs alone.
     (tmp_path / "bad.zip").write_bytes(b"not a zip")
@@ -385,7 +385,7 @@ def test_vtp_m1_upload_outside_colab_cancelled_and_bad_path_are_explained(notebo
     (tmp_path / "outputs" / "earlier.json").write_text("{}", encoding="utf-8")
     ns = _section_4_namespace([])
     ns.update({"train_records": ["stale"], "test_records": ["stale"], "adapt_result": {"stale": True}})
-    with pytest.raises(ValueError, match=r"BYOD refused \(bad.zip\)") as refused:
+    with pytest.raises(ValueError, match=r"^Refused: bad.zip: ") as refused:
         exec(_section_4(notebook, "bad.zip"), ns)
     assert refused.value.dimer_refusal and refused.value.__cause__ is None
     assert not {"train_records", "test_records", "adapt_result"} & set(ns)
