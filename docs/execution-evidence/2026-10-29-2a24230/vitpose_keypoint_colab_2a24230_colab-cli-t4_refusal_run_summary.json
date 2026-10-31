@@ -1,0 +1,71 @@
+{
+  "repo": "vitpose-keypoint-pipeline",
+  "sha": "2a242300f91809ed62329845ab03f5d687b2df53",
+  "notebook": "tutorials/vitpose_keypoint_colab.ipynb",
+  "blob": "743dd22620a45ea916dc8fc8b8b48e036cfcfeec",
+  "gpu": "T4",
+  "session": "suite-vitpose-2a24230-6f65",
+  "started_utc": "2026-10-29T19:33:04+00:00",
+  "runner": "Colab CLI `colab exec -f` on a fresh session (not a browser Run all)",
+  "overrides": [
+    {
+      "name": "USE_BYOD",
+      "from": "False",
+      "to": "True"
+    },
+    {
+      "name": "BYOD_PATH",
+      "from": "''",
+      "to": "'/etc/hostname'"
+    }
+  ],
+  "run_copy_blob": "fae2c23935431b6a7c5e1b92713700956511d220",
+  "run_copy_sha256": "a807d5f0c16e3ec0f38e3ddf914b4562b407acc77644fade37bc2d0c3bf2ab5d",
+  "run_copy_note": "refusal run: the run copy is the committed notebook with the listed assignment overrides, cut immediately after the refusal cell and re-serialised (nbformat layout); input_unchanged compares against that copy",
+  "truncated_after_cell": "vitpose_keypoint-17",
+  "refusal_cell_ref": "vitpose_keypoint-17",
+  "refusal_cell_index": 7,
+  "cells_dropped": 20,
+  "code_cells_dropped": 6,
+  "original_sha256": "a164de862d8e852d557937d0e4c212614e14a0e37c267e2763186868e510f764",
+  "status": "[suite-vitpose-2a24230-6f65] gpu-t4-s-usw1b0-1es278e4nnh1x | Hardware: T4 | Shape: Standard | Variant: GPU | Status: IDLE",
+  "exec_exit_code": 0,
+  "stopped": true,
+  "stop_verified": true,
+  "wall_s": 117.0,
+  "input_unchanged": true,
+  "executed_file": "vitpose_keypoint_colab_2a24230_colab-cli-t4_output.ipynb",
+  "log_cells": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "log_total": 7,
+  "code_cells": 7,
+  "executed_cells": 4,
+  "errors": [
+    {
+      "cell": "vitpose_keypoint-17",
+      "ename": "NotebookRefusal",
+      "evalue": "Refused: hostname: /etc/hostname is neither a directory nor a zip file. Fix the file and run this cell again; earlier files in outputs/ are kept, but the earlier split is no longer active."
+    }
+  ],
+  "execution_counts": [],
+  "sequential": null,
+  "executed_sha256": "14259676d172f61d024d43a8473e16991c3bd0bdedfaf8400de4350345ffa4b3",
+  "log_sequential_complete": true,
+  "mode": "expect_refusal",
+  "refusal_line": "Refused: hostname: /etc/hostname is neither a directory nor a zip file. Fix the file and run this cell again; earlier files in outputs/ are kept, but the earlier split is no longer active.",
+  "halting_cell_index": 7,
+  "halting_cell_id": "vitpose_keypoint-17",
+  "error_cells": [
+    7
+  ],
+  "refusal_fail_reasons": [],
+  "refusal_ok": true,
+  "verdict": "PASS"
+}
